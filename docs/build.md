@@ -2,11 +2,11 @@
 
 ## Текущий статус
 
-Эта инструкция описывает целевые шаги, но пока **не проверена на Windows**. Сборка DLL и запуск мода не считаются выполненными до успешной проверки в Windows с Visual Studio 2022.
+Сборка Client/Server CSS93 в GitHub Actions на Windows с Visual Studio 2022 подтверждена. На пользовательском Windows-ПК мод запускается, карты HL2DM видны, `dm_lockdown` загружается и клиент подключается. Полный игровой запуск пока не завершён: после `Initializing renderer` наблюдается падение, которое диагностируется отдельно.
 
 ## Требования
 
-Нужны Windows 10/11, Visual Studio 2022 с workload **Desktop development with C++**, MSVC v143 для x86/x64, Windows 10 SDK 10.0.19041.0+ или Windows 11 SDK 10.0.22621.0+, а также Source SDK 2013 Multiplayer, установленный через Steam. Python для генерации проектов не требуется: `createallprojects.bat` напрямую запускает VPC.
+Нужны Windows 10/11, Visual Studio 2022 с workload **Desktop development with C++**, MSVC v143 для x86/x64, Windows 10 SDK 10.0.19041.0+ или Windows 11 SDK 10.0.22621.0+, а также установленный через Steam **Half-Life 2: Deathmatch** с базовым HL2-контентом. Python для генерации проектов не требуется: `createallprojects.bat` напрямую запускает VPC.
 
 ## Получение исходников
 
@@ -24,7 +24,7 @@ createallprojects.bat
 
 ## Штатная сборка SDK без изменений
 
-До добавления CSS93 нужно проверить штатные проекты HL2MP. Соберите `Client (HL2MP)` и `Server (HL2MP)` в конфигурациях `Debug` и `Release`, платформа `Win32`. Если сборка не проходит, ошибку нужно записать в `docs/known-issues.md` и не переходить к прототипу.
+До добавления CSS93 следует проверить штатные проекты HL2MP. Соберите `Client (HL2MP)` и `Server (HL2MP)` в конфигурациях `Debug` и `Release`, платформа `Win32`. В CI подтверждена сборка `Release|Win32`; Debug и локальная Windows-сборка ещё не выполнялись.
 
 ## Проекты CSS93
 
@@ -44,6 +44,6 @@ createallprojects.bat
 
 ## Проверка на Windows
 
-После успешной сборки запустите `css93` через Steam или Visual Studio, выполните в консоли `map dm_lockdown`, проверьте загрузку карты и движение. Затем запустите dedicated server с параметрами `-game css93 +map dm_lockdown`, подключитесь локальным клиентом и повторите проверку.
+Запустите `css93` через Steam или Visual Studio и выполните в консоли `map dm_lockdown`. Для dedicated server используйте `-game css93 +map dm_lockdown`, затем подключитесь локальным клиентом.
 
-До проведения этих действий раздел является планом проверки, а не отчётом о рабочем запуске.
+В текущем тесте карта загружается и подключение проходит, но затем клиент падает после `Initializing renderer`. При диагностике сначала проверьте, что установлен Half-Life 2: Deathmatch, а в `gameinfo.txt` используются относительные `hl2mp/...` и `|all_source_engine_paths|hl2/...` SearchPaths из официального HL2MP-шаблона. Если проблема сохранится, замените CSS93 DLL на штатные HL2MP DLL из диагностического artifact и повторите тест.
