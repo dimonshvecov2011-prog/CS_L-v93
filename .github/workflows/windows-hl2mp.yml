@@ -1,0 +1,42 @@
+name: Windows HL2MP build
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build-hl2mp:
+    name: Generate and build HL2MP (Release Win32)
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Generate Visual Studio solution with VPC
+        shell: cmd
+        run: |
+          call mp\src\createallprojects.bat > vpc-generation.log 2>&1
+          if errorlevel 1 exit /b 1
+
+      - name: Build generated solution (Release Win32)
+        shell: cmd
+        run: |
+          msbuild mp\src\everything.sln /m /p:Configuration=Release /p:Platform=Win32 /v:minimal > build-release-win32.log 2>&1
+          if errorlevel 1 exit /b 1
+
+      - name: Upload build logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-hl2mp-build-logs
+          path: |
+            vpc-generation.log
+            build-release-win32.log
+          if-no-files-found: warn
