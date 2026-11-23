@@ -6,6 +6,8 @@ Workflow находится в `.github/workflows/windows-hl2mp.yml`. Он за�
 
 ## Текущий результат
 
-Первый run [#45149824180](https://github.com/dimonshvecov2011-prog/css93/actions/runs/45149824180) завершился с ошибкой на генерации solution. VPC успешно создал `.vcxproj`, но старый бинарник VPC завершился с `ERROR: Unable to find RegKey for .vcproj or .vcxproj files in solutions.` Поэтому сборка DLL не началась. Новый вариант не создаёт `.sln` и проверяет два штатных проекта напрямую.
+Первый run [#45149824180](https://github.com/dimonshvecov2011-prog/css93/actions/runs/45149824180) завершился с ошибкой на генерации solution. VPC создал `.vcxproj`, но старый бинарник VPC завершился с `ERROR: Unable to find RegKey for .vcproj or .vcxproj files in solutions.` Поэтому сборка DLL не началась. Новый вариант не создаёт `.sln` и проверяет два штатных проекта напрямую.
+
+Исправленный run [#45150072071](https://github.com/dimonshvecov2011-prog/css93/actions/runs/45150072071) завершился успешно. Генерация VPC прошла, затем успешно собраны `Client (HL2MP)` и `Server (HL2MP)` в `Release|Win32`. Artifact с логами доступен на [странице artifacts этого run](https://github.com/dimonshvecov2011-prog/css93/actions/runs/45150072071/artifacts): `windows-hl2mp-build-logs` содержит `vpc-generation.log` и `build-release-win32.log`.
 
 У Manus нет собственного GitHub-аккаунта или логина, поэтому принять collaborator-приглашение и выполнить push от имени Manus невозможно. Для публикации нужен push владельцем репозитория либо подключённый GitHub connector с правом записи.
