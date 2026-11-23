@@ -62,5 +62,10 @@ jobs:
           path: |
             vpc-generation.log
             build-release-win32.log
+            mp/game/mod_hl2mp/bin/*.dll
             mp/game/css93/bin/*.dll
+            mp/src/game/client/Release_mod_hl2mp/*.pdb
+            mp/src/game/server/Release_mod_hl2mp/*.pdb
+            mp/src/game/client/Release_css93/*.pdb
+            mp/src/game/server/Release_css93/*.pdb
           if-no-files-found: warn

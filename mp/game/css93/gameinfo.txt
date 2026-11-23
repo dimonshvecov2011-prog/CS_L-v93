@@ -20,32 +20,38 @@
     {
         SteamAppId 243750
 
+        // Search paths are relative to the directory containing hl2.exe.
+        // Keep the CSS93 mod path first so its DLLs and future content win.
         SearchPaths
         {
+            // User customizations for the mod.
             game+mod            css93/custom/*
-            mod+mod_write       |gameinfo_path|.
-            game+game_write     |gameinfo_path|.
-            default_write_path  |gameinfo_path|
-            gamebin             |gameinfo_path|bin
 
-            // The initial prototype reuses only public Source SDK Base 2013 MP content.
-            // Replace these paths with css93 VPKs/content as the project grows.
-            game+mod            |appid_243750|hl2mp/hl2mp_english.vpk
-            game+mod            |appid_243750|hl2mp/hl2mp_pak.vpk
-            game                |appid_243750|hl2_complete/hl2_complete_textures.vpk
-            game                |appid_243750|hl2_complete/hl2_complete_sound_vo_english.vpk
-            game                |appid_243750|hl2_complete/hl2_complete_sound_misc.vpk
-            game                |appid_243750|hl2_complete/hl2_complete_misc.vpk
-            game                |appid_243750|hl2/hl2_textures.vpk
-            game                |appid_243750|hl2/hl2_sound_vo_english.vpk
-            game                |appid_243750|hl2/hl2_sound_misc.vpk
-            game                |appid_243750|hl2/hl2_misc.vpk
-            platform            |appid_243750|platform/platform_misc.vpk
-            game                |appid_243750|hl2mp
-            game                |appid_243750|hl2_complete
-            game                |appid_243750|hl2
-            platform            |appid_243750|platform
-            game+download      css93/download
+            // Mod files, writes and CSS93 game binaries.
+            game+mod+mod_write+default_write_path  |gameinfo_path|.
+            gamebin                                  |gameinfo_path|bin
+
+            // HL2DM content supplied by Source SDK Base 2013 Multiplayer.
+            game_lv             hl2/hl2_lv.vpk
+            game+mod            hl2mp/hl2mp_english.vpk
+            game+mod            hl2mp/hl2mp_pak.vpk
+
+            // Shared Half-Life 2 content from the installed Source engine paths.
+            game                |all_source_engine_paths|hl2/hl2_english.vpk
+            game                |all_source_engine_paths|hl2/hl2_pak.vpk
+            game                |all_source_engine_paths|hl2/hl2_textures.vpk
+            game                |all_source_engine_paths|hl2/hl2_sound_vo_english.vpk
+            game                |all_source_engine_paths|hl2/hl2_sound_misc.vpk
+            game                |all_source_engine_paths|hl2/hl2_misc.vpk
+            platform            |all_source_engine_paths|platform/platform_misc.vpk
+
+            // HL2DM and HL2 loose-file roots.
+            game+game_write     hl2mp
+            game                |all_source_engine_paths|hl2mp
+            game                |all_source_engine_paths|hl2
+            platform            |all_source_engine_paths|platform
+
+            game+download       css93/download
         }
     }
 }
