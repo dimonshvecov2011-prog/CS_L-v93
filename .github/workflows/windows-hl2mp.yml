@@ -23,13 +23,19 @@ jobs:
         shell: cmd
         working-directory: mp/src
         run: |
-          devtools\bin\vpc.exe /hl2mp +everything /mksln everything.sln /define:VS2022 > ..\..\vpc-generation.log 2>&1
+          devtools\bin\vpc.exe /hl2mp +everything /define:VS2022 > ..\..\vpc-generation.log 2>&1
           if errorlevel 1 exit /b 1
 
-      - name: Build generated solution (Release Win32)
+      - name: Build Client (HL2MP) (Release Win32)
         shell: cmd
         run: |
-          msbuild mp\src\everything.sln /m /p:Configuration=Release /p:Platform=Win32 /v:minimal > build-release-win32.log 2>&1
+          msbuild mp\src\game\client\client_hl2mp.vcxproj /m /p:Configuration=Release /p:Platform=Win32 /v:minimal > build-release-win32.log 2>&1
+          if errorlevel 1 exit /b 1
+
+      - name: Build Server (HL2MP) (Release Win32)
+        shell: cmd
+        run: |
+          msbuild mp\src\game\server\server_hl2mp.vcxproj /m /p:Configuration=Release /p:Platform=Win32 /v:minimal >> build-release-win32.log 2>&1
           if errorlevel 1 exit /b 1
 
       - name: Upload build logs

@@ -8,6 +8,7 @@
 - Проекты `Client (CSS93)` и `Server (CSS93)` ещё не зарегистрированы в VPC-генерации.
 - Штатная сборка `Client (HL2MP)` и `Server (HL2MP)` в Debug/Release Win32 пока не проверена.
 - Выход DLL в `mp/game/css93/bin`, запуск через Steam и запуск dedicated server пока не проверены.
+- Первый GitHub Actions run `45149824180` успешно прошёл checkout и настройку MSBuild, но VPC упал на `/mksln`: `ERROR: Unable to find RegKey for .vcproj or .vcxproj files in solutions.` Лог сохранён в artifact `windows-hl2mp-build-logs`. Это ограничение старого VPC при генерации solution на runner с Visual Studio 2022; CI переведён на прямую сборку двух `.vcxproj` без `/mksln`.
 - До появления DLL папка `mp/game/css93` не является запускаемым модом.
 
 ## Лицензия
