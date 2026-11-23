@@ -1,6 +1,6 @@
 # Windows CI
 
-Workflow находится в `.github/workflows/windows-hl2mp.yml`. Он запускается на `windows-latest`, генерирует `mp/src/everything.sln` командой `createallprojects.bat`, затем собирает штатное решение в конфигурации `Release|Win32`. Это решение включает проекты `Client (HL2MP)` и `Server (HL2MP)`. Логи генерации и сборки сохраняются как GitHub Actions artifact.
+Workflow находится в `.github/workflows/windows-hl2mp.yml`. Он запускается на `windows-latest`, переходит в `mp/src` и напрямую вызывает `devtools\bin\vpc.exe /hl2mp +everything /mksln everything.sln /define:VS2022`, затем собирает штатное решение в конфигурации `Release|Win32`. Это решение включает проекты `Client (HL2MP)` и `Server (HL2MP)`. Логи генерации и сборки сохраняются как GitHub Actions artifact.
 
 ## Текущий результат
 
