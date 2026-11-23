@@ -14,6 +14,12 @@ $Group "gamedlls"
 	"server"
 }
 
+$Group "gamedlls_css93"
+{
+	"client_css93"
+	"server_css93"
+}
+
 $Group "game"
 {
 	"client"
@@ -33,6 +39,7 @@ $Group "everything"
 {
 	"captioncompiler"
 	"client"
+	"client_css93"
 	"fgdlib"
 	"game_shader_dx9"
 	"glview"
@@ -43,6 +50,7 @@ $Group "everything"
 	"raytrace"
 	"qc_eyes"
 	"server"
+	"server_css93"
 	"serverplugin_empty"
 	"tgadiff"
 	"tier1"
@@ -63,4 +71,3 @@ $Group "dedicated"
 	"server"
 	"tier1"
 }
-

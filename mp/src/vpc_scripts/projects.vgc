@@ -19,6 +19,11 @@ $Project "client"
 	"game\client\client_hl2mp.vpc"		[($WIN32||$POSIX) && $HL2MP]
 }
 
+$Project "client_css93"
+{
+	"game\client\client_css93.vpc"		[$WIN32]
+}
+
 $Project "fgdlib"
 {
 	"fgdlib\fgdlib.vpc" [$WIN32]
@@ -42,6 +47,11 @@ $Project "height2normal"
 $Project "server"
 {
 	"game\server\server_hl2mp.vpc"		[($WIN32||$POSIX) && $HL2MP]
+}
+
+$Project "server_css93"
+{
+	"game\server\server_css93.vpc"		[$WIN32]
 }
 
 $Project "mathlib"
@@ -128,4 +138,3 @@ $Project "vvis_launcher"
 {
 	"utils\vvis_launcher\vvis_launcher.vpc" [$WIN32]
 }
-

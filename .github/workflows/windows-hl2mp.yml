@@ -25,6 +25,10 @@ jobs:
         run: |
           devtools\bin\vpc.exe /hl2mp +everything /define:VS2022 > ..\..\vpc-generation.log 2>&1
           if errorlevel 1 exit /b 1
+          findstr /C:"<PlatformToolset>v143</PlatformToolset>" game\client\client_css93.vcxproj >> ..\..\vpc-generation.log
+          if errorlevel 1 exit /b 1
+          findstr /C:"<PlatformToolset>v143</PlatformToolset>" game\server\server_css93.vcxproj >> ..\..\vpc-generation.log
+          if errorlevel 1 exit /b 1
 
       - name: Build Client (HL2MP) (Release Win32)
         shell: cmd
@@ -38,6 +42,18 @@ jobs:
           msbuild mp\src\game\server\server_hl2mp.vcxproj /m /p:Configuration=Release /p:Platform=Win32 /v:minimal >> build-release-win32.log 2>&1
           if errorlevel 1 exit /b 1
 
+      - name: Build Client (CSS93) (Release Win32)
+        shell: cmd
+        run: |
+          msbuild mp\src\game\client\client_css93.vcxproj /m /p:Configuration=Release /p:Platform=Win32 /v:minimal >> build-release-win32.log 2>&1
+          if errorlevel 1 exit /b 1
+
+      - name: Build Server (CSS93) (Release Win32)
+        shell: cmd
+        run: |
+          msbuild mp\src\game\server\server_css93.vcxproj /m /p:Configuration=Release /p:Platform=Win32 /v:minimal >> build-release-win32.log 2>&1
+          if errorlevel 1 exit /b 1
+
       - name: Upload build logs
         if: always()
         uses: actions/upload-artifact@v4
@@ -46,4 +62,5 @@ jobs:
           path: |
             vpc-generation.log
             build-release-win32.log
+            mp/game/css93/bin/*.dll
           if-no-files-found: warn
