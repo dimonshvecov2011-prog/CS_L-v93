@@ -6,6 +6,8 @@ public static class HashMismatchPrompt
 
     public static string Format(VersionCheckResult result, int maxEntries = 12)
     {
+        ArgumentNullException.ThrowIfNull(result);
+        maxEntries = Math.Max(0, maxEntries);
         var entries = result.Mismatches.Take(maxEntries).Select(mismatch => mismatch.Kind switch
         {
             MismatchKind.Missing => $"• {mismatch.Path}: файл отсутствует",

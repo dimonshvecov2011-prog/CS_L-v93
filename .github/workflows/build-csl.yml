@@ -29,6 +29,21 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Validate release tag version
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        run: |
+          $tagVersion = $env:GITHUB_REF_NAME -replace '^(csl-)?v', ''
+          [xml]$project = Get-Content ".\CSL\src\CssLauncher.App\CssLauncher.App.csproj" -Raw
+          $projectVersion = $project.SelectSingleNode('/Project/PropertyGroup/Version').InnerText
+          $setupText = Get-Content ".\CSL\installer\CSL-Setup.iss" -Raw
+          $setupMatch = [regex]::Match($setupText, '#define MyAppVersion "([^"]+)"')
+          if (-not $setupMatch.Success) { throw "Не удалось прочитать версию Inno Setup." }
+          $setupVersion = $setupMatch.Groups[1].Value
+          if ($tagVersion -ne $projectVersion -or $tagVersion -ne $setupVersion) {
+            throw "Версия тега ($tagVersion) не совпадает с проектом ($projectVersion) и установщиком ($setupVersion)."
+          }
+
       - name: Setup .NET 8
         uses: actions/setup-dotnet@v4
         with:
