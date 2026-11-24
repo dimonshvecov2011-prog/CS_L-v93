@@ -89,13 +89,13 @@ version
 Профили CS:L создаются в `%AppData%\CssLauncher\profiles\<id>\`. По умолчанию лаунчер автоматически предпочитает `cstrike.exe`, а при его отсутствии использует `hl2.exe`.
 
 ```bat
-cstrike.exe -steam -game "%AppData%\CssLauncher\profiles\default" -novid -console
+cstrike.exe -steam -game "%AppData%\CssLauncher\profiles\classic" -novid -console
 ```
 
 Или:
 
 ```bat
-hl2.exe -steam -game "%AppData%\CssLauncher\profiles\default" -novid -console
+hl2.exe -steam -game "%AppData%\CssLauncher\profiles\classic" -novid -console
 ```
 
 Если потребуется изменить порядок или `custom/*`, изменяйте только `templates/gameinfo.template.txt`, а не код.
@@ -124,7 +124,7 @@ hl2.exe -steam -game "%AppData%\CssLauncher\profiles\default" -novid -console
 Автоматически создаются:
 
 ```text
-%AppData%\CssLauncher\profiles\default\custom
+%AppData%\CssLauncher\profiles\classic\custom
 %AppData%\CssLauncher\backups
 %AppData%\CssLauncher\logs
 ```
@@ -162,7 +162,7 @@ git push origin v0.3.1
 
 Для тега `v*` workflow дополнительно создаёт GitHub Release и прикладывает установщик. Сам репозиторий не должен содержать файлы CS:S, Steam или Valve.
 
-## CS:L 0.3 — реализованный функционал
+## CS:L 0.3.1 — проверенный функционал
 
 В версии 0.3.1 сохранены три профиля запуска: `Classic`, `Modern` и `Competitive`. Каждый профиль получает отдельную папку `profiles/<id>/custom`, поэтому переключение набора не изменяет оригинальные файлы CS:S.
 
