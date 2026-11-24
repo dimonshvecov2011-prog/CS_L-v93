@@ -31,13 +31,15 @@ public sealed class SteamInfParser
         }
         return result;
     }
+
     public string? ParseClientVersion(string text)
     {
         var values = Parse(text);
-        if (values.TryGetValue("ClientVersion", out var client)) return client;
-        if (values.TryGetValue("PatchVersion", out var patch)) return patch;
+        if (values.TryGetValue("ClientVersion", out var client) && !string.IsNullOrWhiteSpace(client)) return client;
+        if (values.TryGetValue("PatchVersion", out var patch) && !string.IsNullOrWhiteSpace(patch)) return patch;
         return null;
     }
+
     public string? ParseClientVersionFromFile(string path) => File.Exists(path) ? ParseClientVersion(File.ReadAllText(path)) : null;
 }
 
@@ -45,7 +47,20 @@ public static class GameExecutableDetector
 {
     public static ExecutableDetection Detect(string gameRoot)
     {
-        var found = new[] { "cstrike.exe", "hl2.exe" }.Select(x => Path.Combine(gameRoot, x)).Where(File.Exists).ToArray();
+        var found = new[] { "cstrike.exe", "hl2.exe" }.Select(name => Path.Combine(gameRoot, name)).Where(File.Exists).ToArray();
         return new(found.FirstOrDefault(), found);
+    }
+
+    public static string? Select(ExecutableDetection detection, string? previouslySelected)
+    {
+        if (!string.IsNullOrWhiteSpace(previouslySelected))
+        {
+            var savedName = Path.GetFileName(previouslySelected.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+            var selected = detection.FoundPaths.FirstOrDefault(path =>
+                string.Equals(Path.GetFileName(path), savedName, StringComparison.OrdinalIgnoreCase));
+            if (selected is not null) return selected;
+        }
+
+        return detection.PreferredPath;
     }
 }

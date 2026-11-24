@@ -100,7 +100,10 @@ public sealed class DiagnosticArchiveService
 {
     private readonly string _dataRoot;
     public DiagnosticArchiveService(string? appData = null) => _dataRoot = Path.Combine(appData ?? Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "CssLauncher");
-    public Task<DiagnosticArchiveResult> CreateAsync(string? gameRoot, string? profileId = null, CancellationToken ct = default)
+    public Task<DiagnosticArchiveResult> CreateAsync(string? gameRoot, string? profileId = null, CancellationToken ct = default) =>
+        Task.Run(() => CreateCore(gameRoot, profileId, ct), ct);
+
+    private DiagnosticArchiveResult CreateCore(string? gameRoot, string? profileId, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested(); Directory.CreateDirectory(Path.Combine(_dataRoot, "backups"));
         var archive = Path.Combine(_dataRoot, "backups", $"csl-diagnostic-{DateTime.Now:yyyyMMdd-HHmmss}.zip");
@@ -109,7 +112,7 @@ public sealed class DiagnosticArchiveService
         if (!string.IsNullOrWhiteSpace(gameRoot)) { Add(files, Path.Combine(gameRoot, "cstrike", "steam.inf")); Add(files, SteamPathHelper.GetAppManifestPath(gameRoot)); }
         var uniqueFiles = files.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         using (var zip = ZipFile.Open(archive, ZipArchiveMode.Create)) foreach (var file in uniqueFiles) { ct.ThrowIfCancellationRequested(); zip.CreateEntryFromFile(file, GetEntryName(file, gameRoot)); }
-        return Task.FromResult(new DiagnosticArchiveResult(archive, uniqueFiles.Count, new FileInfo(archive).Length));
+        return new DiagnosticArchiveResult(archive, uniqueFiles.Count, new FileInfo(archive).Length);
     }
     private static void Add(List<string> files, string path, bool recursive = false)
     { if (File.Exists(path)) files.Add(path); else if (recursive && Directory.Exists(path)) files.AddRange(Directory.GetFiles(path, "*", SearchOption.AllDirectories)); }

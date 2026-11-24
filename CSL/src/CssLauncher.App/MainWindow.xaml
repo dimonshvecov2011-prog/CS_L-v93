@@ -1,7 +1,196 @@
-<Window x:Class="CssLauncher.App.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="CS:L 0.3.1" Height="820" Width="1280" MinHeight="700" MinWidth="1050" WindowStartupLocation="CenterScreen" Background="#0A0F1E" Foreground="#F4F7FF">
-<Window.Resources><SolidColorBrush x:Key="Panel" Color="#121A2D"/><SolidColorBrush x:Key="Muted" Color="#8C9AB5"/><SolidColorBrush x:Key="Accent" Color="#6DE4FF"/><SolidColorBrush x:Key="Purple" Color="#9B7BFF"/><Style TargetType="TextBlock"><Setter Property="FontFamily" Value="Segoe UI"/><Setter Property="Foreground" Value="#F4F7FF"/></Style><Style TargetType="Button"><Setter Property="FontFamily" Value="Segoe UI Semibold"/><Setter Property="FontSize" Value="13"/><Setter Property="Foreground" Value="#F4F7FF"/><Setter Property="Background" Value="#243252"/><Setter Property="BorderThickness" Value="0"/><Setter Property="Padding" Value="14,9"/><Setter Property="Margin" Value="0,0,8,0"/></Style><Style x:Key="Primary" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}"><Setter Property="Background" Value="#3B82F6"/><Setter Property="FontSize" Value="16"/><Setter Property="Padding" Value="25,13"/></Style><Style TargetType="TextBox"><Setter Property="Background" Value="#0E1628"/><Setter Property="Foreground" Value="#F4F7FF"/><Setter Property="BorderBrush" Value="#2A3A5E"/><Setter Property="Padding" Value="9,7"/></Style><Style TargetType="ComboBox"><Setter Property="Background" Value="#0E1628"/><Setter Property="Foreground" Value="#F4F7FF"/><Setter Property="Padding" Value="7,5"/></Style><Style TargetType="CheckBox"><Setter Property="Foreground" Value="#C8D3E8"/><Setter Property="Margin" Value="0,0,16,0"/></Style></Window.Resources>
-<Grid Margin="22"><Grid.ColumnDefinitions><ColumnDefinition Width="220"/><ColumnDefinition Width="20"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-<Border Grid.Column="0" Background="{StaticResource Panel}" CornerRadius="17" Padding="18"><DockPanel><StackPanel DockPanel.Dock="Top"><StackPanel Orientation="Horizontal" Margin="0,4,0,28"><Border Width="40" Height="40" CornerRadius="11" Background="#243B72"><TextBlock Text="CS" FontSize="15" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border><StackPanel Margin="11,0,0,0"><TextBlock Text="CS:L" FontSize="24" FontWeight="Bold"/><TextBlock Text="SOURCE LAUNCHER" FontSize="9" Foreground="{StaticResource Accent}" FontWeight="Bold"/></StackPanel></StackPanel><TextBlock Text="НАВИГАЦИЯ" FontSize="10" Foreground="{StaticResource Muted}" FontWeight="Bold" Margin="3,0,0,10"/><Button Content="Обзор" HorizontalContentAlignment="Left" Background="#243B72" Click="HomeNav_Click"/><Button Content="Профили" Click="ProfilesNav_Click" HorizontalContentAlignment="Left"/><Button Content="Серверы" Click="ServersNav_Click" HorizontalContentAlignment="Left"/><Button Content="Диагностика" Click="DiagnosticsNav_Click" HorizontalContentAlignment="Left"/></StackPanel><StackPanel DockPanel.Dock="Bottom"><Border Background="#0E1628" CornerRadius="11" Padding="11" Margin="0,0,0,12"><StackPanel><TextBlock Text="CS:S STATUS" FontSize="10" Foreground="{StaticResource Muted}"/><TextBlock x:Name="SideStatusText" Text="Не подключено" FontSize="14" FontWeight="SemiBold" Margin="0,5,0,0"/><TextBlock x:Name="SideVersionText" Text="—" FontSize="11" Foreground="{StaticResource Accent}"/></StackPanel></Border><TextBlock Text="CS:L v0.3.1" Foreground="{StaticResource Muted}" FontSize="11"/></StackPanel></DockPanel></Border>
-<Grid Grid.Column="2"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions><StackPanel Grid.Row="0" Margin="0,0,0,18"><TextBlock Text="Добро пожаловать в CS:L" FontSize="29" FontWeight="Bold"/><TextBlock Text="Лаунчер, профили и серверы в одном месте" FontSize="14" Foreground="{StaticResource Muted}" Margin="0,5,0,0"/></StackPanel><Border Grid.Row="1" Background="{StaticResource Panel}" CornerRadius="16" Padding="19" Margin="0,0,0,15"><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><StackPanel><TextBlock Text="ИГРА" FontSize="10" Foreground="{StaticResource Accent}" FontWeight="Bold"/><TextBlock x:Name="StatusText" Text="Ищем Counter-Strike: Source..." FontSize="20" FontWeight="SemiBold" Margin="0,7,0,3"/><TextBlock x:Name="PathText" Text="Укажите папку или установите игру через Steam" Foreground="{StaticResource Muted}" TextTrimming="CharacterEllipsis"/><TextBlock x:Name="BuildText" Text="ClientVersion: —   •   Steam buildid: —" Foreground="{StaticResource Muted}" FontSize="12" Margin="0,9,0,0"/></StackPanel><StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center"><Button x:Name="InstallButton" Content="Установить через Steam" Click="InstallGame_Click" Background="#13B8D4" Foreground="#06111D"/><Button Content="Выбрать папку" Click="ChooseFolder_Click"/></StackPanel></Grid></Border>
-<TabControl x:Name="MainTabs" Grid.Row="2" Background="Transparent" BorderThickness="0"><TabItem Header="Обзор"><Grid Margin="0,12,0,0"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions><Border Background="{StaticResource Panel}" CornerRadius="16" Padding="19" Margin="0,0,0,14"><StackPanel><TextBlock Text="АКТИВНЫЙ ПРОФИЛЬ" FontSize="10" Foreground="{StaticResource Accent}" FontWeight="Bold"/><ComboBox x:Name="ProfileBox" Width="240" HorizontalAlignment="Left" Margin="0,8,0,4" SelectionChanged="ProfileChanged"/><TextBlock x:Name="ProfileDescriptionText" Foreground="{StaticResource Muted}" TextWrapping="Wrap"/></StackPanel></Border><Grid Grid.Row="1"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="15"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><Border Background="{StaticResource Panel}" CornerRadius="16" Padding="19"><StackPanel><TextBlock Text="ПРЕСЕТЫ CS:L" FontSize="10" Foreground="{StaticResource Purple}" FontWeight="Bold"/><TextBlock Text="Настройки запуска проекта" FontSize="18" FontWeight="SemiBold" Margin="0,7,0,2"/><TextBlock Text="CS:L использует собственные профили запуска. Сторонние модификации не поддерживаются." Foreground="{StaticResource Muted}" TextWrapping="Wrap"/></StackPanel></Border><Border Grid.Column="2" Background="{StaticResource Panel}" CornerRadius="16" Padding="19"><StackPanel><TextBlock Text="ОБНОВЛЕНИЕ" FontSize="10" Foreground="{StaticResource Accent}" FontWeight="Bold"/><TextBlock x:Name="UpdateStatusText" Text="Проверка не выполнялась" FontSize="18" FontWeight="SemiBold" Margin="0,7,0,2"/><Button Content="Проверить обновления" Click="CheckUpdate_Click" HorizontalAlignment="Left" Margin="0,16,0,0"/></StackPanel></Border></Grid></Grid></TabItem><TabItem Header="Профили"><StackPanel Margin="0,20"><TextBlock Text="ПРОФИЛИ CS:L" FontSize="11" Foreground="{StaticResource Accent}" FontWeight="Bold"/><TextBlock Text="Каждый профиль имеет собственный набор настроек запуска." FontSize="20" FontWeight="SemiBold" Margin="0,8,0,16"/><ListView x:Name="ProfilesList" Height="180" Background="{StaticResource Panel}" Foreground="#F4F7FF" BorderThickness="0" DisplayMemberPath="Name"/><Button Content="Применить профиль" Click="ApplyProfile_Click" HorizontalAlignment="Left" Margin="0,15,0,0"/></StackPanel></TabItem><TabItem Header="Серверы"><Grid Margin="0,12,0,0"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions><StackPanel Orientation="Horizontal"><Button Content="Обновить список" Click="LoadServers_Click"/><TextBox x:Name="ServerSourceBox" Width="420" Text="config/servers.example.json"/></StackPanel><ListView x:Name="ServersList" Grid.Row="1" Margin="0,12" Background="{StaticResource Panel}" Foreground="#F4F7FF" BorderThickness="0" DisplayMemberPath="DisplayName"/><TextBlock x:Name="ServerDetailText" Grid.Row="2" Foreground="{StaticResource Muted}"/></Grid></TabItem><TabItem Header="Диагностика"><StackPanel Margin="0,20"><TextBlock Text="ДИАГНОСТИЧЕСКИЙ АРХИВ" FontSize="11" Foreground="{StaticResource Accent}" FontWeight="Bold"/><TextBlock Text="Соберите логи и сведения о версии без файлов Valve." FontSize="20" FontWeight="SemiBold" Margin="0,8,0,8"/><TextBlock Text="Архив содержит настройки, логи, steam.inf, appmanifest и выбранный профиль." Foreground="{StaticResource Muted}" TextWrapping="Wrap"/><Button Content="Создать ZIP-архив" Click="CreateDiagnostic_Click" HorizontalAlignment="Left" Margin="0,18,0,0"/><TextBlock x:Name="DiagnosticStatusText" Foreground="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,13,0,0"/></StackPanel></TabItem></TabControl>
-<Border Grid.Row="3" Background="{StaticResource Panel}" CornerRadius="14" Padding="14" Margin="0,15,0,0"><DockPanel><StackPanel DockPanel.Dock="Left" Orientation="Horizontal"><CheckBox x:Name="DiagnosticBox" Content="Диагностический режим" Checked="DiagnosticChanged" Unchecked="DiagnosticChanged"/><CheckBox x:Name="SteamBox" Content="-steam" IsChecked="True"/><CheckBox x:Name="NovidBox" Content="-novid" IsChecked="True"/><CheckBox x:Name="ConsoleBox" Content="-console" IsChecked="True"/></StackPanel><StackPanel DockPanel.Dock="Right" Orientation="Horizontal"><TextBlock x:Name="HintText" Text="Готов к запуску" Foreground="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,15,0"/><Button x:Name="PlayButton" Content="ИГРАТЬ  ›" Click="Play_Click" IsEnabled="False" Style="{StaticResource Primary}"/></StackPanel></DockPanel></Border></Grid></Grid></Window>
+<Window x:Class="CssLauncher.App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="CS:L 0.3.2" Height="820" Width="1280" MinHeight="700" MinWidth="1050"
+        WindowStartupLocation="CenterScreen" Background="#0A0F1E" Foreground="#F4F7FF">
+    <Window.Resources>
+        <SolidColorBrush x:Key="Panel" Color="#121A2D"/>
+        <SolidColorBrush x:Key="Muted" Color="#8C9AB5"/>
+        <SolidColorBrush x:Key="Accent" Color="#6DE4FF"/>
+        <SolidColorBrush x:Key="Purple" Color="#9B7BFF"/>
+        <Style TargetType="TextBlock">
+            <Setter Property="FontFamily" Value="Segoe UI"/>
+            <Setter Property="Foreground" Value="#F4F7FF"/>
+        </Style>
+        <Style TargetType="Button">
+            <Setter Property="FontFamily" Value="Segoe UI Semibold"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Foreground" Value="#F4F7FF"/>
+            <Setter Property="Background" Value="#243252"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="14,9"/>
+            <Setter Property="Margin" Value="0,0,8,0"/>
+        </Style>
+        <Style x:Key="Primary" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Background" Value="#3B82F6"/>
+            <Setter Property="FontSize" Value="16"/>
+            <Setter Property="Padding" Value="25,13"/>
+        </Style>
+        <Style TargetType="TextBox">
+            <Setter Property="Background" Value="#0E1628"/>
+            <Setter Property="Foreground" Value="#F4F7FF"/>
+            <Setter Property="BorderBrush" Value="#2A3A5E"/>
+            <Setter Property="Padding" Value="9,7"/>
+        </Style>
+        <Style TargetType="ComboBox">
+            <Setter Property="Background" Value="#0E1628"/>
+            <Setter Property="Foreground" Value="#F4F7FF"/>
+            <Setter Property="Padding" Value="7,5"/>
+        </Style>
+        <Style TargetType="CheckBox">
+            <Setter Property="Foreground" Value="#C8D3E8"/>
+            <Setter Property="Margin" Value="0,0,16,0"/>
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="22">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="220"/>
+            <ColumnDefinition Width="20"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <Border Grid.Column="0" Background="{StaticResource Panel}" CornerRadius="17" Padding="18">
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Top">
+                    <StackPanel Orientation="Horizontal" Margin="0,4,0,28">
+                        <Border Width="40" Height="40" CornerRadius="11" Background="#243B72">
+                            <TextBlock Text="CS" FontSize="15" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <StackPanel Margin="11,0,0,0">
+                            <TextBlock Text="CS:L" FontSize="24" FontWeight="Bold"/>
+                            <TextBlock Text="SOURCE LAUNCHER" FontSize="9" Foreground="{StaticResource Accent}" FontWeight="Bold"/>
+                        </StackPanel>
+                    </StackPanel>
+                    <TextBlock Text="НАВИГАЦИЯ" FontSize="10" Foreground="{StaticResource Muted}" FontWeight="Bold" Margin="3,0,0,10"/>
+                    <Button Content="Обзор" HorizontalContentAlignment="Left" Background="#243B72" Click="HomeNav_Click"/>
+                    <Button Content="Профили" Click="ProfilesNav_Click" HorizontalContentAlignment="Left"/>
+                    <Button Content="Серверы" Click="ServersNav_Click" HorizontalContentAlignment="Left"/>
+                    <Button Content="Диагностика" Click="DiagnosticsNav_Click" HorizontalContentAlignment="Left"/>
+                </StackPanel>
+                <StackPanel DockPanel.Dock="Bottom">
+                    <Border Background="#0E1628" CornerRadius="11" Padding="11" Margin="0,0,0,12">
+                        <StackPanel>
+                            <TextBlock Text="CS:S STATUS" FontSize="10" Foreground="{StaticResource Muted}"/>
+                            <TextBlock x:Name="SideStatusText" Text="Не подключено" FontSize="14" FontWeight="SemiBold" Margin="0,5,0,0"/>
+                            <TextBlock x:Name="SideVersionText" Text="—" FontSize="11" Foreground="{StaticResource Accent}"/>
+                        </StackPanel>
+                    </Border>
+                    <TextBlock Text="CS:L v0.3.2" Foreground="{StaticResource Muted}" FontSize="11"/>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <Grid Grid.Column="2">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+            <StackPanel Grid.Row="0" Margin="0,0,0,18">
+                <TextBlock Text="Добро пожаловать в CS:L" FontSize="29" FontWeight="Bold"/>
+                <TextBlock Text="Лаунчер, профили и серверы в одном месте" FontSize="14" Foreground="{StaticResource Muted}" Margin="0,5,0,0"/>
+            </StackPanel>
+
+            <Border Grid.Row="1" Background="{StaticResource Panel}" CornerRadius="16" Padding="19" Margin="0,0,0,15">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="220"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="ИГРА" FontSize="10" Foreground="{StaticResource Accent}" FontWeight="Bold"/>
+                        <TextBlock x:Name="StatusText" Text="Ищем Counter-Strike: Source..." FontSize="20" FontWeight="SemiBold" Margin="0,7,0,3"/>
+                        <TextBlock x:Name="PathText" Text="Укажите папку или установите игру через Steam" Foreground="{StaticResource Muted}" TextTrimming="CharacterEllipsis"/>
+                        <TextBlock x:Name="BuildText" Text="ClientVersion: —   •   Steam buildid: —" Foreground="{StaticResource Muted}" FontSize="12" Margin="0,9,0,0"/>
+                        <StackPanel x:Name="ExecutablePanel" Orientation="Horizontal" Margin="0,9,0,0" Visibility="Collapsed">
+                            <TextBlock Text="Исполняемый файл:" Foreground="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                            <ComboBox x:Name="ExecutableBox" Width="190" SelectionChanged="ExecutableChanged"/>
+                        </StackPanel>
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                        <Button x:Name="InstallButton" Content="Установить через Steam" Click="InstallGame_Click" Background="#13B8D4" Foreground="#06111D" Margin="0,0,0,7"/>
+                        <Button Content="Выбрать папку" Click="ChooseFolder_Click" Margin="0,0,0,7"/>
+                        <Button x:Name="RetryInstallButton" Content="Проверить снова" Click="RetryInstall_Click" Visibility="Collapsed" Margin="0"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <TabControl x:Name="MainTabs" Grid.Row="2" Background="Transparent" BorderThickness="0">
+                <TabItem Header="Обзор">
+                    <Grid Margin="0,12,0,0">
+                        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                        <Border Background="{StaticResource Panel}" CornerRadius="16" Padding="19" Margin="0,0,0,14">
+                            <StackPanel>
+                                <TextBlock Text="АКТИВНЫЙ ПРОФИЛЬ" FontSize="10" Foreground="{StaticResource Accent}" FontWeight="Bold"/>
+                                <ComboBox x:Name="ProfileBox" Width="240" HorizontalAlignment="Left" Margin="0,8,0,4" SelectionChanged="ProfileChanged"/>
+                                <TextBlock x:Name="ProfileDescriptionText" Foreground="{StaticResource Muted}" TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </Border>
+                        <Grid Grid.Row="1">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="15"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <Border Background="{StaticResource Panel}" CornerRadius="16" Padding="19">
+                                <StackPanel>
+                                    <TextBlock Text="ПРЕСЕТЫ CS:L" FontSize="10" Foreground="{StaticResource Purple}" FontWeight="Bold"/>
+                                    <TextBlock Text="Настройки запуска проекта" FontSize="18" FontWeight="SemiBold" Margin="0,7,0,2"/>
+                                    <TextBlock Text="Профили задают параметры запуска CS:S. Управление сторонними модификациями не включено." Foreground="{StaticResource Muted}" TextWrapping="Wrap"/>
+                                </StackPanel>
+                            </Border>
+                            <Border Grid.Column="2" Background="{StaticResource Panel}" CornerRadius="16" Padding="19">
+                                <StackPanel>
+                                    <TextBlock Text="ОБНОВЛЕНИЕ" FontSize="10" Foreground="{StaticResource Accent}" FontWeight="Bold"/>
+                                    <TextBlock x:Name="UpdateStatusText" Text="Проверка не выполнялась" FontSize="18" FontWeight="SemiBold" Margin="0,7,0,2" TextWrapping="Wrap"/>
+                                    <Button Content="Проверить обновления" Click="CheckUpdate_Click" HorizontalAlignment="Left" Margin="0,16,0,0"/>
+                                </StackPanel>
+                            </Border>
+                        </Grid>
+                    </Grid>
+                </TabItem>
+                <TabItem Header="Профили">
+                    <StackPanel Margin="0,20">
+                        <TextBlock Text="ПРОФИЛИ CS:L" FontSize="11" Foreground="{StaticResource Accent}" FontWeight="Bold"/>
+                        <TextBlock Text="Каждый профиль имеет собственный набор настроек запуска." FontSize="20" FontWeight="SemiBold" Margin="0,8,0,16"/>
+                        <ListView x:Name="ProfilesList" Height="180" Background="{StaticResource Panel}" Foreground="#F4F7FF" BorderThickness="0" DisplayMemberPath="Name" SelectionChanged="ProfilesList_SelectionChanged"/>
+                        <Button Content="Применить профиль" Click="ApplyProfile_Click" HorizontalAlignment="Left" Margin="0,15,0,0"/>
+                    </StackPanel>
+                </TabItem>
+                <TabItem Header="Серверы">
+                    <Grid Margin="0,12,0,0">
+                        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                        <StackPanel Orientation="Horizontal">
+                            <Button Content="Обновить список" Click="LoadServers_Click"/>
+                            <TextBox x:Name="ServerSourceBox" Width="420" Text="config/servers.example.json"/>
+                        </StackPanel>
+                        <ListView x:Name="ServersList" Grid.Row="1" Margin="0,12" Background="{StaticResource Panel}" Foreground="#F4F7FF" BorderThickness="0" DisplayMemberPath="DisplayName"/>
+                        <TextBlock x:Name="ServerDetailText" Grid.Row="2" Foreground="{StaticResource Muted}"/>
+                    </Grid>
+                </TabItem>
+                <TabItem Header="Диагностика">
+                    <StackPanel Margin="0,20">
+                        <TextBlock Text="ДИАГНОСТИЧЕСКИЙ АРХИВ" FontSize="11" Foreground="{StaticResource Accent}" FontWeight="Bold"/>
+                        <TextBlock Text="Соберите логи и сведения о версии без файлов Valve." FontSize="20" FontWeight="SemiBold" Margin="0,8,0,8"/>
+                        <TextBlock Text="Архив содержит настройки, логи, steam.inf, appmanifest и выбранный профиль." Foreground="{StaticResource Muted}" TextWrapping="Wrap"/>
+                        <Button x:Name="CreateDiagnosticButton" Content="Создать ZIP-архив" Click="CreateDiagnostic_Click" HorizontalAlignment="Left" Margin="0,18,0,0"/>
+                        <TextBlock x:Name="DiagnosticStatusText" Foreground="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,13,0,0"/>
+                    </StackPanel>
+                </TabItem>
+            </TabControl>
+
+            <Border Grid.Row="3" Background="{StaticResource Panel}" CornerRadius="14" Padding="14" Margin="0,15,0,0">
+                <DockPanel>
+                    <StackPanel DockPanel.Dock="Left" Orientation="Horizontal">
+                        <CheckBox x:Name="DiagnosticBox" Content="Диагностический режим" Checked="DiagnosticChanged" Unchecked="DiagnosticChanged"/>
+                        <CheckBox x:Name="SteamBox" Content="-steam" IsChecked="True"/>
+                        <CheckBox x:Name="NovidBox" Content="-novid" IsChecked="True"/>
+                        <CheckBox x:Name="ConsoleBox" Content="-console" IsChecked="True"/>
+                    </StackPanel>
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                        <TextBlock x:Name="HintText" Text="Готов к запуску" Foreground="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,15,0"/>
+                        <Button x:Name="PlayButton" Content="ИГРАТЬ  ›" Click="Play_Click" IsEnabled="False" Style="{StaticResource Primary}"/>
+                    </StackPanel>
+                </DockPanel>
+            </Border>
+        </Grid>
+    </Grid>
+</Window>

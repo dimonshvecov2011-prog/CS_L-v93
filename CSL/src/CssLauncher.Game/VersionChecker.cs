@@ -27,7 +27,14 @@ public sealed class VersionChecker : IVersionChecker
         var clientVersion = _steamInfParser.ParseClientVersionFromFile(steamInfPath);
         var known = clientVersion is not null && manifest.KnownVersions.Contains(int.TryParse(clientVersion, out var value) ? value : -1);
         var mismatches = new List<FileMismatch>();
-        if (manifest.EnableSha256Checks && manifest.Variants is { Count: > 0 }) mismatches.AddRange(await CheckHashesAsync(gameRoot, manifest.Variants, ct));
+        if (manifest.EnableSha256Checks)
+        {
+            var variants = manifest.Variants?.Where(variant => variant.Files.Count > 0 && variant.Files.All(file => IsValidSha256(file.Sha256))).ToList();
+            if (variants is not { Count: > 0 })
+                return new(VersionStatus.ManifestEmpty, Array.Empty<FileMismatch>(), buildId, executable.PreferredPath,
+                    "Проверка SHA-256 включена, но в манифесте нет вариантов с корректными хэшами.", clientVersion);
+            mismatches.AddRange(await CheckHashesAsync(gameRoot, variants, ct));
+        }
         var message = clientVersion is null
             ? "cstrike/steam.inf не найден или не содержит ClientVersion/PatchVersion. Продолжение возможно только в диагностическом режиме или после явного подтверждения."
             : known ? $"ClientVersion {clientVersion} подтверждён; Steam buildid: {buildId ?? "не определён"}." : $"Установлена ClientVersion {clientVersion}, встроенные расширения CS:L проверены для версии {manifest.Version}. Возможна несовместимость. Steam buildid: {buildId ?? "не определён"}.";
@@ -36,7 +43,7 @@ public sealed class VersionChecker : IVersionChecker
 
     private static async Task<IReadOnlyList<FileMismatch>> CheckHashesAsync(string root, IReadOnlyList<ManifestVariant> variants, CancellationToken ct)
     {
-        var valid = variants.Where(v => v.Files.Count > 0 && v.Files.All(f => !string.IsNullOrWhiteSpace(f.Sha256))).ToList();
+        var valid = variants.Where(v => v.Files.Count > 0 && v.Files.All(f => IsValidSha256(f.Sha256))).ToList();
         if (valid.Count == 0) return Array.Empty<FileMismatch>();
         List<FileMismatch>? best = null;
         foreach (var variant in valid)
@@ -55,4 +62,6 @@ public sealed class VersionChecker : IVersionChecker
     }
 
     public static bool IsSafeRelativePath(string path) => !string.IsNullOrWhiteSpace(path) && !Path.IsPathRooted(path) && !path.Contains("..", StringComparison.Ordinal) && !path.Contains(':') && !path.StartsWith('/') && !path.StartsWith('\\');
+
+    private static bool IsValidSha256(string? value) => value is { Length: 64 } && value.All(Uri.IsHexDigit);
 }
