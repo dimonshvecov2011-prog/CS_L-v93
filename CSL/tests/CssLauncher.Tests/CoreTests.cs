@@ -1,4 +1,7 @@
 using System.IO.Compression;
+using System.Net;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using CssLauncher.Core;
 using CssLauncher.Game;
@@ -199,7 +202,7 @@ public class CoreTests
     public async Task ProfileCatalogServicePreparesTheProfileUsedByTheWindow()
     {
         var app = TempDirectory("CssCatalogProfileApp");
-        var game = TempDirectory("CssCatalogProfileGame");
+            var game = TempDirectory("Игра с пробелом");
         try
         {
             var template = Path.Combine(app, "gameinfo.template.txt");
@@ -389,23 +392,6 @@ public class CoreTests
     }
 
     [Fact]
-    public async Task ProfileUsesUnicodeAndSpacesWithoutTouchingGame()
-    {
-        var root = TempDirectory("Игра с пробелом");
-        var app = TempDirectory("CssProfileTest");
-        try
-        {
-            var template = Path.Combine(app, "template.txt");
-            await File.WriteAllTextAsync(template, "root={GAME_ROOT}");
-            var profile = await new ProfileService(template, app).CreateOrUpdateAsync(root);
-            var text = await File.ReadAllTextAsync(Path.Combine(profile, "gameinfo.txt"));
-            Assert.Contains("Игра с пробелом", text);
-            Assert.True(Directory.Exists(Path.Combine(profile, "custom")));
-        }
-        finally { DeleteDirectory(root); DeleteDirectory(app); }
-    }
-
-    [Fact]
     public async Task DiagnosticArchiveIncludesSteamManifestFromLibraryRoot()
     {
         var library = TempDirectory("CssDiagLibrary");
@@ -426,6 +412,267 @@ public class CoreTests
             Assert.True(result.Size > 0);
         }
         finally { DeleteDirectory(library); DeleteDirectory(app); }
+    }
+
+    [Fact]
+    public async Task UnsupportedSettingsSchemaIsPreservedWithoutBackupOrOverwrite()
+    {
+        var temp = TempDirectory("CssSettingsFutureSchema");
+        try
+        {
+            var settingsPath = Path.Combine(temp, "CssLauncher", "settings.json");
+            Directory.CreateDirectory(Path.GetDirectoryName(settingsPath)!);
+            const string original = "{\"schemaVersion\":99,\"gamePath\":\"D:/keep\"}";
+            await File.WriteAllTextAsync(settingsPath, original);
+
+            var exception = await Assert.ThrowsAsync<UnsupportedSettingsSchemaException>(
+                () => new JsonSettingsService(temp).LoadAsync());
+
+            Assert.Equal(99, exception.FoundSchemaVersion);
+            Assert.Equal(original, await File.ReadAllTextAsync(settingsPath));
+            Assert.False(File.Exists(settingsPath + ".bak"));
+        }
+        finally { DeleteDirectory(temp); }
+    }
+
+    [Fact]
+    public async Task LauncherUpdateManifestReadsCamelCaseJsonAndValidatesHttpsChannel()
+    {
+        var temp = TempDirectory("CssUpdateManifest");
+        try
+        {
+            var path = Path.Combine(temp, "launcher-update.json");
+            var json = JsonSerializer.Serialize(new
+            {
+                schemaVersion = 1,
+                version = "0.3.4",
+                downloadUrl = "https://updates.example.invalid/CSL.zip",
+                sha256 = new string('a', 64),
+                size = 12,
+                releaseNotes = "test"
+            });
+            await File.WriteAllTextAsync(path, json);
+
+            var result = await new LauncherUpdateService(temp).CheckAsync(path, "0.3.3");
+
+            Assert.True(result.Available);
+            Assert.Equal("0.3.4", result.Update?.Version);
+        }
+        finally { DeleteDirectory(temp); }
+    }
+
+    [Fact]
+    public async Task LauncherUpdateRejectsHttpManifestWithoutSendingRequest()
+    {
+        var temp = TempDirectory("CssUpdateHttp");
+        try
+        {
+            var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK));
+            var service = new LauncherUpdateService(temp, new HttpClient(handler));
+
+            var result = await service.CheckAsync("http://updates.example.invalid/manifest.json", "0.3.3");
+
+            Assert.False(result.Available);
+            Assert.Contains("HTTPS", result.Message);
+            Assert.Equal(0, handler.RequestCount);
+        }
+        finally { DeleteDirectory(temp); }
+    }
+
+    [Fact]
+    public async Task LauncherUpdateCheckPropagatesCallerCancellation()
+    {
+        var temp = TempDirectory("CssUpdateCancel");
+        try
+        {
+            var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var handler = new CancellableHttpMessageHandler(entered);
+            var service = new LauncherUpdateService(temp, new HttpClient(handler));
+            using var cancellation = new CancellationTokenSource();
+            var check = service.CheckAsync("https://updates.example.invalid/manifest.json", "0.3.3", cancellation.Token);
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+            cancellation.Cancel();
+
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => check);
+        }
+        finally { DeleteDirectory(temp); }
+    }
+
+    [Fact]
+    public async Task LauncherUpdateDownloadsOnlyExactHttpsBytesWithMatchingSha256()
+    {
+        var temp = TempDirectory("CssUpdateDownload");
+        try
+        {
+            var payload = Encoding.UTF8.GetBytes("verified update bytes");
+            var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new ByteArrayContent(payload)
+            });
+            var service = new LauncherUpdateService(temp, new HttpClient(handler));
+            var manifest = new LauncherUpdateManifest(1, "0.3.4", "https://updates.example.invalid/CSL.zip",
+                Convert.ToHexString(SHA256.HashData(payload)), payload.Length);
+
+            var downloaded = await service.DownloadAsync(manifest);
+
+            Assert.Equal(payload, await File.ReadAllBytesAsync(downloaded));
+            Assert.Equal(1, handler.RequestCount);
+        }
+        finally { DeleteDirectory(temp); }
+    }
+
+    [Fact]
+    public async Task LauncherUpdateRejectsHttpDownloadAndSizeMismatch()
+    {
+        var temp = TempDirectory("CssUpdateReject");
+        try
+        {
+            var payload = Encoding.UTF8.GetBytes("payload");
+            var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new ByteArrayContent(payload)
+            });
+            var service = new LauncherUpdateService(temp, new HttpClient(handler));
+            var insecure = new LauncherUpdateManifest(1, "0.3.4", "http://updates.example.invalid/CSL.zip",
+                new string('0', 64), payload.Length);
+            await Assert.ThrowsAsync<InvalidDataException>(() => service.DownloadAsync(insecure));
+            Assert.Equal(0, handler.RequestCount);
+
+            var wrongSize = new LauncherUpdateManifest(1, "0.3.4", "https://updates.example.invalid/CSL.zip",
+                new string('0', 64), payload.Length - 1);
+            await Assert.ThrowsAsync<InvalidDataException>(() => service.DownloadAsync(wrongSize));
+            Assert.Empty(Directory.GetFiles(Path.Combine(temp, "CssLauncher", "updates"), "*.zip"));
+        }
+        finally { DeleteDirectory(temp); }
+    }
+
+    [Fact]
+    public async Task ServerListRejectsHttpSourcesAndInvalidPorts()
+    {
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK));
+        var service = new ServerListService(new HttpClient(handler));
+        await Assert.ThrowsAsync<InvalidDataException>(() => service.LoadAsync("http://servers.example.invalid/list.json"));
+        Assert.Equal(0, handler.RequestCount);
+
+        var temp = TempDirectory("CssServerListInvalid");
+        try
+        {
+            var path = Path.Combine(temp, "servers.json");
+            await File.WriteAllTextAsync(path, JsonSerializer.Serialize(new ServerListManifest(1,
+                "2026-11-24T00:00:00Z", new[] { new ServerEntry("Bad server", "localhost", 70000) })));
+            await Assert.ThrowsAsync<InvalidDataException>(() => service.LoadAsync(path));
+        }
+        finally { DeleteDirectory(temp); }
+    }
+
+    [Fact]
+    public async Task GameLauncherRejectsExecutablePathOutsideGameRoot()
+    {
+        var temp = TempDirectory("CssLaunchPathSafety");
+        try
+        {
+            var game = Path.Combine(temp, "game");
+            var profile = Path.Combine(temp, "profile");
+            Directory.CreateDirectory(game);
+            Directory.CreateDirectory(profile);
+            await File.WriteAllTextAsync(Path.Combine(game, "cstrike.exe"), "not launched");
+            await File.WriteAllTextAsync(Path.Combine(temp, "outside.exe"), "not launched");
+
+            await Assert.ThrowsAsync<ArgumentException>(() => new GameLauncher().LaunchAsync(
+                game, profile, new LaunchOptions(Executable: "../outside.exe", Steam: false)));
+        }
+        finally { DeleteDirectory(temp); }
+    }
+
+    [Fact]
+    public async Task GameLauncherRejectsExecutableSymlinkOutsideGameRoot()
+    {
+        var temp = TempDirectory("CssLaunchSymlinkSafety");
+        try
+        {
+            var game = Path.Combine(temp, "game");
+            var profile = Path.Combine(temp, "profile");
+            var outside = Path.Combine(temp, "outside.exe");
+            Directory.CreateDirectory(game);
+            Directory.CreateDirectory(profile);
+            await File.WriteAllTextAsync(outside, "not launched");
+            try { File.CreateSymbolicLink(Path.Combine(game, "cstrike.exe"), outside); }
+            catch (Exception ex) when (ex is UnauthorizedAccessException or PlatformNotSupportedException or IOException)
+            {
+                return;
+            }
+
+            var error = await Assert.ThrowsAsync<ArgumentException>(() => new GameLauncher().LaunchAsync(
+                game, profile, new LaunchOptions(Executable: "cstrike.exe", Steam: false)));
+            Assert.Contains("ссылки", error.Message);
+        }
+        finally { DeleteDirectory(temp); }
+    }
+
+    [Fact]
+    public async Task KnownClientVersionRemainsConfirmedWhenInformationalSteamBuildDiffers()
+    {
+        var library = TempDirectory("CssKnownVersionUnknownBuild");
+        try
+        {
+            var root = await CreateGameRoot(library, "11003710");
+            await File.WriteAllTextAsync(Path.Combine(library, "steamapps", "appmanifest_240.acf"), "\"buildid\" \"99999999\"");
+            var manifest = await WriteVersionManifest(library,
+                new VersionManifest(2, "CS:S", "11003710", new[] { 11003710 }, new[] { 25338318 }));
+
+            var result = await new VersionChecker(manifest).CheckAsync(root);
+
+            Assert.Equal(VersionStatus.Confirmed, result.Status);
+            Assert.Contains("информационное", result.Message);
+        }
+        finally { DeleteDirectory(library); }
+    }
+
+    [Fact]
+    public void HashMismatchPromptClampsNegativeEntryLimit()
+    {
+        var result = new VersionCheckResult(VersionStatus.Confirmed,
+            new[] { new FileMismatch("cstrike/file.dat", MismatchKind.Missing, "hash", null) });
+
+        Assert.Contains("ещё 1", HashMismatchPrompt.Format(result, -1));
+    }
+
+    [Fact]
+    public async Task LoggerWritesFullExceptionAndIsolatesThrowingSubscribers()
+    {
+        var temp = TempDirectory("CssLogger");
+        try
+        {
+            using var logger = new FileLogger(temp);
+            var observed = 0;
+            logger.Message += _ => throw new InvalidOperationException("subscriber failure");
+            logger.Message += _ => observed++;
+            logger.Error("operation failed", new InvalidOperationException("exception details"));
+
+            var logFile = Assert.Single(Directory.GetFiles(Path.Combine(temp, "CssLauncher", "logs"), "*.log"));
+            var text = await File.ReadAllTextAsync(logFile);
+            Assert.Contains("InvalidOperationException", text);
+            Assert.Contains("exception details", text);
+            Assert.Equal(1, observed);
+        }
+        finally { DeleteDirectory(temp); }
+    }
+
+    [Fact]
+    public async Task LoggerTruncatesSingleOversizedEntryToConfiguredFileLimit()
+    {
+        var temp = TempDirectory("CssLoggerLimit");
+        try
+        {
+            using var logger = new FileLogger(temp);
+            logger.Info(new string('Ж', 3_000_000));
+
+            var logFile = Assert.Single(Directory.GetFiles(Path.Combine(temp, "CssLauncher", "logs"), "*.log"));
+            Assert.True(new FileInfo(logFile).Length <= 5L * 1024 * 1024);
+            Assert.Contains("[log entry truncated]", await File.ReadAllTextAsync(logFile));
+        }
+        finally { DeleteDirectory(temp); }
     }
 
     private static string TempDirectory(string prefix)
@@ -455,5 +702,36 @@ public class CoreTests
         var path = Path.Combine(directory, "version-manifest.json");
         await File.WriteAllTextAsync(path, JsonSerializer.Serialize(manifest));
         return path;
+    }
+
+    private sealed class StubHttpMessageHandler : HttpMessageHandler
+    {
+        private readonly Func<HttpRequestMessage, HttpResponseMessage> _createResponse;
+        public int RequestCount { get; private set; }
+
+        public StubHttpMessageHandler(Func<HttpRequestMessage, HttpResponseMessage> createResponse) =>
+            _createResponse = createResponse;
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            RequestCount++;
+            var response = _createResponse(request);
+            response.RequestMessage = request;
+            return Task.FromResult(response);
+        }
+    }
+
+    private sealed class CancellableHttpMessageHandler : HttpMessageHandler
+    {
+        private readonly TaskCompletionSource _entered;
+
+        public CancellableHttpMessageHandler(TaskCompletionSource entered) => _entered = entered;
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            _entered.TrySetResult();
+            await Task.Delay(Timeout.Infinite, cancellationToken);
+            return new HttpResponseMessage(HttpStatusCode.OK);
+        }
     }
 }

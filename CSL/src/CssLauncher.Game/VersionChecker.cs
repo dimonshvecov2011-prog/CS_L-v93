@@ -26,6 +26,10 @@ public sealed class VersionChecker : IVersionChecker
         var steamInfPath = Path.Combine(gameRoot, "cstrike", "steam.inf");
         var clientVersion = _steamInfParser.ParseClientVersionFromFile(steamInfPath);
         var known = clientVersion is not null && manifest.KnownVersions.Contains(int.TryParse(clientVersion, out var value) ? value : -1);
+        var knownBuild = buildId is not null && manifest.KnownBuilds?.Contains(int.TryParse(buildId, out var buildValue) ? buildValue : -1) == true;
+        var buildDescription = buildId is null
+            ? "не определён"
+            : knownBuild ? buildId : $"{buildId} (не указан в knownBuilds; поле информационное)";
         var mismatches = new List<FileMismatch>();
         if (manifest.EnableSha256Checks)
         {
@@ -36,8 +40,8 @@ public sealed class VersionChecker : IVersionChecker
             mismatches.AddRange(await CheckHashesAsync(gameRoot, variants, ct));
         }
         var message = clientVersion is null
-            ? "cstrike/steam.inf не найден или не содержит ClientVersion/PatchVersion. Продолжение возможно только в диагностическом режиме или после явного подтверждения."
-            : known ? $"ClientVersion {clientVersion} подтверждён; Steam buildid: {buildId ?? "не определён"}." : $"Установлена ClientVersion {clientVersion}, встроенные расширения CS:L проверены для версии {manifest.Version}. Возможна несовместимость. Steam buildid: {buildId ?? "не определён"}.";
+            ? $"cstrike/steam.inf не найден или не содержит ClientVersion/PatchVersion. Продолжение возможно только в диагностическом режиме или после явного подтверждения. Steam buildid: {buildDescription}."
+            : known ? $"ClientVersion {clientVersion} подтверждён; Steam buildid: {buildDescription}." : $"Установлена ClientVersion {clientVersion}, встроенные расширения CS:L проверены для версии {manifest.Version}. Возможна несовместимость. Steam buildid: {buildDescription}.";
         return new(known ? VersionStatus.Confirmed : VersionStatus.UnknownBuild, mismatches, buildId, executable.PreferredPath, message, clientVersion);
     }
 

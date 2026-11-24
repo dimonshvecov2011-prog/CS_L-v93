@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using Forms = System.Windows.Forms;
 using WpfMessageBox = System.Windows.MessageBox;
 using CssLauncher.Core;
@@ -13,6 +14,7 @@ namespace CssLauncher.App;
 
 public partial class MainWindow : Window
 {
+    private const string CurrentVersion = "0.3.3";
     private readonly FileLogger _logger = new();
     private readonly JsonSettingsService _settings = new();
     private readonly string _root = AppContext.BaseDirectory;
@@ -37,11 +39,74 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        Title = $"CS:L {CurrentVersion}";
+        LauncherVersionText.Text = $"CS:L v{CurrentVersion}";
+        FitWindowToWorkArea();
         _logger.Message += message => Dispatcher.BeginInvoke(new Action(() =>
             HintText.Text = message.Length > 100 ? message[..100] : message));
-        Loaded += async (_, _) => await LoadAsync();
+        Loaded += async (_, _) =>
+        {
+            try { await LoadAsync(); }
+            catch (Exception ex)
+            {
+                _logger.Error("Не удалось завершить инициализацию лаунчера.", ex);
+                StatusText.Text = "Ошибка инициализации";
+                SideStatusText.Text = "Ошибка";
+                HintText.Text = ex.Message;
+                PlayButton.IsEnabled = false;
+            }
+        };
+        StateChanged += MainWindow_StateChanged;
         Closing += MainWindow_Closing;
     }
+
+    private void FitWindowToWorkArea()
+    {
+        var workArea = SystemParameters.WorkArea;
+        if (workArea.Width <= 0 || workArea.Height <= 0) return;
+
+        MinWidth = Math.Min(760, workArea.Width);
+        MinHeight = Math.Min(460, workArea.Height);
+        Width = Math.Min(1200, workArea.Width);
+        Height = Math.Min(760, workArea.Height);
+
+        var compact = workArea.Width < 700;
+        SidebarPanel.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+        SidebarColumn.Width = compact
+            ? new GridLength(0)
+            : new GridLength(Math.Clamp(workArea.Width * 0.23, 145, 176));
+        SidebarGapColumn.Width = compact ? new GridLength(0) : new GridLength(13);
+        GameActionsColumn.Width = new GridLength(compact ? 132 : 158);
+    }
+
+    private void WindowHeader_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ChangedButton != MouseButton.Left || e.ButtonState != MouseButtonState.Pressed) return;
+        if (e.ClickCount == 2)
+        {
+            WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+            e.Handled = true;
+            return;
+        }
+
+        try { DragMove(); }
+        catch (InvalidOperationException) { }
+        e.Handled = true;
+    }
+
+    private void MainWindow_StateChanged(object? sender, EventArgs e)
+    {
+        var maximized = WindowState == WindowState.Maximized;
+        MaximizeButton.Content = maximized ? "❐" : "□";
+        MaximizeButton.ToolTip = maximized ? "Восстановить" : "Развернуть";
+        System.Windows.Automation.AutomationProperties.SetName(MaximizeButton,
+            maximized ? "Восстановить размер окна" : "Развернуть окно");
+    }
+
+    private void MinimizeWindow_Click(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
+    private void MaximizeWindow_Click(object sender, RoutedEventArgs e) =>
+        WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+    private void CloseWindow_Click(object sender, RoutedEventArgs e) => Close();
 
     private async Task LoadAsync()
     {
@@ -58,6 +123,14 @@ public partial class MainWindow : Window
             _logger.Warning($"Повреждённый settings.json перемещён в {ex.BackupPath}.");
             WpfMessageBox.Show($"Файл настроек был повреждён и сохранён как резервная копия:\n{ex.BackupPath}\n\nБудут загружены настройки по умолчанию.",
                 "CS:L — восстановление настроек", MessageBoxButton.OK, MessageBoxImage.Warning);
+            settings = new LauncherSettings();
+        }
+        catch (UnsupportedSettingsSchemaException ex)
+        {
+            _settingsLoadFailed = true;
+            _logger.Warning(ex.Message);
+            WpfMessageBox.Show($"{ex.Message}\n\nФайл сохранён без изменений; новые настройки не будут записаны поверх неизвестной схемы.",
+                "CS:L — версия настроек", MessageBoxButton.OK, MessageBoxImage.Warning);
             settings = new LauncherSettings();
         }
         catch (Exception ex)
@@ -448,7 +521,7 @@ public partial class MainWindow : Window
 
     private async void CheckUpdate_Click(object sender, RoutedEventArgs e)
     {
-        var result = await _updates.CheckAsync(Path.Combine(_root, "config", "launcher-update.json"), "0.3.2");
+        var result = await _updates.CheckAsync(Path.Combine(_root, "config", "launcher-update.json"), CurrentVersion);
         UpdateStatusText.Text = result.Message;
         if (result.Available && result.Update is not null)
         {
@@ -482,11 +555,6 @@ public partial class MainWindow : Window
             CreateDiagnosticButton.IsEnabled = true;
         }
     }
-
-    private void HomeNav_Click(object sender, RoutedEventArgs e) => MainTabs.SelectedIndex = 0;
-    private void ProfilesNav_Click(object sender, RoutedEventArgs e) => MainTabs.SelectedIndex = 1;
-    private void ServersNav_Click(object sender, RoutedEventArgs e) => MainTabs.SelectedIndex = 2;
-    private void DiagnosticsNav_Click(object sender, RoutedEventArgs e) => MainTabs.SelectedIndex = 3;
 
     private async void MainWindow_Closing(object? sender, CancelEventArgs e)
     {
