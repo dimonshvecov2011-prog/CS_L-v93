@@ -1,5 +1,5 @@
 #define MyAppName "CS:L Launcher"
-#define MyAppVersion "0.3.0"
+#define MyAppVersion "0.3.1"
 #define MyAppPublisher "CS:L Project"
 #define MyAppExeName "CSL.exe"
 

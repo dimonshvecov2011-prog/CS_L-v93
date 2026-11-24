@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "version": "0.3.0",
-  "downloadUrl": "https://example.invalid/csl/CSL-0.3.0.zip",
-  "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "version": "0.3.1",
+  "downloadUrl": "",
+  "sha256": "",
   "size": 0,
-  "releaseNotes": "CS:L 0.3"
+  "releaseNotes": "CS:L 0.3.1; канал обновлений будет настроен для следующего релиза."
 }

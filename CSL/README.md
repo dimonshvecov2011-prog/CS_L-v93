@@ -86,7 +86,7 @@ version
 
 Подробная пошаговая инструкция с проверкой обоих exe, команд `path` и `version`, а также загрузки из `custom/` находится в [docs/manual-check-game-launch.md](docs/manual-check-game-launch.md).
 
-Профиль создаётся в `%AppData%\CssLauncher\profiles\default\`. Для проверки запускайте выбранный exe примерно так:
+Профили CS:L создаются в `%AppData%\CssLauncher\profiles\<id>\`. По умолчанию лаунчер автоматически предпочитает `cstrike.exe`, а при его отсутствии использует `hl2.exe`.
 
 ```bat
 cstrike.exe -steam -game "%AppData%\CssLauncher\profiles\default" -novid -console
@@ -151,23 +151,23 @@ iscc .\installer\CSL-Setup.iss
 
 ## Автоматическая сборка через GitHub Actions
 
-Файл `.github/workflows/build-csl.yml` собирает проект на `windows-latest` без установки .NET или Inno Setup на компьютере разработчика. Workflow выполняет restore, build, тесты, self-contained publish и собирает `CSL-Setup-0.3.0.exe`. Готовые portable-файлы и установщик доступны во вкладке **Actions → Artifacts**.
+Файл `.github/workflows/build-csl.yml` собирает проект на `windows-latest` без установки .NET или Inno Setup на компьютере разработчика. Workflow выполняет restore, build, тесты, self-contained publish и собирает `CSL-Setup-0.3.1.exe`. Готовые portable-файлы и установщик доступны во вкладке **Actions → Artifacts**.
 
 Для релизной сборки создайте и отправьте тег:
 
 ```powershell
-git tag v0.3.0
-git push origin v0.3.0
+git tag v0.3.1
+git push origin v0.3.1
 ```
 
 Для тега `v*` workflow дополнительно создаёт GitHub Release и прикладывает установщик. Сам репозиторий не должен содержать файлы CS:S, Steam или Valve.
 
 ## CS:L 0.3 — реализованный функционал
 
-В версии 0.3 добавлены три встроенных профиля: `Classic`, `Modern` и `Competitive`. Каждый профиль получает отдельную папку `profiles/<id>/custom`, поэтому переключение набора не изменяет оригинальные файлы CS:S.
+В версии 0.3.1 сохранены три профиля запуска: `Classic`, `Modern` и `Competitive`. Каждый профиль получает отдельную папку `profiles/<id>/custom`, поэтому переключение набора не изменяет оригинальные файлы CS:S.
 
-Серверный список поддерживает локальный JSON и HTTP(S)-источник. В комплекте есть `config/servers.example.json` как демонстрационный формат. Профили управляют только собственными настройками и встроенными улучшениями CS:L.
+Серверный список поддерживает локальный JSON и HTTP(S)-источник. В комплекте есть `config/servers.example.json` как демонстрационный формат. Профили управляют настройками запуска CS:L; каталог `custom` зарезервирован для собственных ресурсов проекта и не управляется как каталог сторонних модификаций.
 
-Кнопка проверки обновлений читает `config/launcher-update.json`, сравнивает SemVer, скачивает архив в `%AppData%\\CssLauncher\\updates` и проверяет SHA-256 до использования. Диагностический архив собирается в `%AppData%\\CssLauncher\\backups` и включает настройки, логи, сведения о версии Steam и профиль без копирования файлов Valve.
+Кнопка проверки обновлений читает `config/launcher-update.json`, сравнивает SemVer, а при настроенном HTTPS-канале скачивает архив в `%AppData%\\CssLauncher\\updates` во временный файл и проверяет размер и SHA-256 до замены. Диагностический архив собирается в `%AppData%\\CssLauncher\\backups` и включает настройки, логи, сведения о версии Steam и профиль без копирования файлов Valve.
 
-Конфигурации 0.3 копируются в output автоматически: `servers.example.json` и `launcher-update.json`. Для сборки Windows нужен .NET 8 SDK; текущий Sandbox не содержит `dotnet`, поэтому здесь выполнены статические проверки XAML-событий и JSON, а не компиляция WPF.
+Конфигурации 0.3.1 копируются в output автоматически: `servers.example.json` и `launcher-update.json`. Для сборки Windows нужен .NET 8 SDK; текущий Sandbox не содержит `dotnet`, поэтому здесь выполнены статические проверки XAML-событий и JSON, а не компиляция WPF.

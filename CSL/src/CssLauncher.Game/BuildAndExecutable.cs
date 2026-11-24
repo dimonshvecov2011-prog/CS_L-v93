@@ -10,6 +10,12 @@ public sealed class AppManifestParser
     public string? ParseBuildIdFromFile(string path) => File.Exists(path) ? ParseBuildId(File.ReadAllText(path)) : null;
 }
 
+public static class SteamPathHelper
+{
+    public static string GetAppManifestPath(string gameRoot) =>
+        Path.GetFullPath(Path.Combine(gameRoot, "..", "..", "appmanifest_240.acf"));
+}
+
 public sealed class SteamInfParser
 {
     public IReadOnlyDictionary<string, string> Parse(string text)

@@ -21,7 +21,7 @@ public sealed class VersionChecker : IVersionChecker
         if (manifest is null || manifest.KnownVersions is not { Count: > 0 })
             return new(VersionStatus.ManifestEmpty, Array.Empty<FileMismatch>(), ExecutablePath: executable.PreferredPath, Message: "Список совместимых ClientVersion пуст.");
 
-        var appManifestPath = Path.GetFullPath(Path.Combine(gameRoot, "..", "..", "appmanifest_240.acf"));
+        var appManifestPath = SteamPathHelper.GetAppManifestPath(gameRoot);
         var buildId = _appManifestParser.ParseBuildIdFromFile(appManifestPath);
         var steamInfPath = Path.Combine(gameRoot, "cstrike", "steam.inf");
         var clientVersion = _steamInfParser.ParseClientVersionFromFile(steamInfPath);
