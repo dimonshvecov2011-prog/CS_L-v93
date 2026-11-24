@@ -28,7 +28,7 @@ jobs:
           dotnet-version: 8.0.x
 
       - name: Restore
-        run: dotnet restore .\CssLauncher.sln
+        run: dotnet restore .\CssLauncher.sln -r win-x64
 
       - name: Build
         run: dotnet build .\CssLauncher.sln -c Release --no-restore
