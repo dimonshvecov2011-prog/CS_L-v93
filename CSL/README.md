@@ -102,9 +102,9 @@ hl2.exe -steam -game "%AppData%\CssLauncher\profiles\default" -novid -console
 
 ## Обновление игры
 
-Если Steam обновил игру до новой `ClientVersion`, а моды проверялись для версии `11003710`, лаунчер сообщает и пишет в лог:
+Если Steam обновил игру до новой `ClientVersion`, а встроенные расширения проверялись для версии `11003710`, лаунчер сообщает и пишет в лог:
 
-> Установлена ClientVersion X, моды проверены для версии 11003710. Возможна несовместимость.
+> Установлена ClientVersion X, встроенные расширения проверены для версии 11003710. Возможна несовместимость.
 
 Автоматической миграции или блокировки обновлений на этом этапе нет.
 
@@ -125,15 +125,13 @@ hl2.exe -steam -game "%AppData%\CssLauncher\profiles\default" -novid -console
 
 ```text
 %AppData%\CssLauncher\profiles\default\custom
-%AppData%\CssLauncher\mods
-%AppData%\CssLauncher\downloads
 %AppData%\CssLauncher\backups
 %AppData%\CssLauncher\logs
 ```
 
-## Манифест модов
+## Встроенные плагины CS:L
 
-`config/mods.example.json` показывает формат канала модов. Каждый пакет содержит `id`, `version`, `description`, HTTPS/HTTP URL, размер и SHA-256. `ModPackageService` скачивает архив во временный слой, проверяет SHA-256, защищает распаковку от Zip Slip, устанавливает мод в `%AppData%\CssLauncher\mods`, а включённую копию помещает только в `profiles\default\custom\<id>`. Отключение удаляет только этот пользовательский слой; оригинальная папка Steam не затрагивается. Это API-основа менеджера модов для следующего UI-модуля.
+CS:L не содержит каталога сторонних модификаций. Проект распространяет только собственные плагины и улучшения, которые включаются через версии лаунчера и профили `Classic`, `Modern` и `Competitive`. Ресурсы профиля изолированы в `%AppData%\CssLauncher\profiles\<id>\custom`; оригинальная папка Steam не изменяется.
 
 ## Сборка установщика Windows
 
@@ -153,13 +151,13 @@ iscc .\installer\CSL-Setup.iss
 
 ## Автоматическая сборка через GitHub Actions
 
-Файл `.github/workflows/build-windows.yml` собирает проект на `windows-latest` без установки .NET или Inno Setup на компьютере разработчика. Workflow выполняет restore, build, тесты, self-contained publish и собирает `CSL-Setup-0.2.0.exe`. Готовые portable-файлы и установщик доступны во вкладке **Actions → Artifacts**.
+Файл `.github/workflows/build-csl.yml` собирает проект на `windows-latest` без установки .NET или Inno Setup на компьютере разработчика. Workflow выполняет restore, build, тесты, self-contained publish и собирает `CSL-Setup-0.3.0.exe`. Готовые portable-файлы и установщик доступны во вкладке **Actions → Artifacts**.
 
 Для релизной сборки создайте и отправьте тег:
 
 ```powershell
-git tag v0.2.0
-git push origin v0.2.0
+git tag v0.3.0
+git push origin v0.3.0
 ```
 
 Для тега `v*` workflow дополнительно создаёт GitHub Release и прикладывает установщик. Сам репозиторий не должен содержать файлы CS:S, Steam или Valve.
@@ -168,8 +166,8 @@ git push origin v0.2.0
 
 В версии 0.3 добавлены три встроенных профиля: `Classic`, `Modern` и `Competitive`. Каждый профиль получает отдельную папку `profiles/<id>/custom`, поэтому переключение набора не изменяет оригинальные файлы CS:S.
 
-Менеджер модов читает каталог, скачивает ZIP по HTTP(S), проверяет SHA-256, защищает распаковку от Zip Slip, хранит версии в `%AppData%\\CssLauncher\\mods` и включает мод только в выбранный профиль. Серверный список поддерживает локальный JSON и HTTP(S)-источник. В комплекте есть `config/servers.example.json` как демонстрационный формат.
+Серверный список поддерживает локальный JSON и HTTP(S)-источник. В комплекте есть `config/servers.example.json` как демонстрационный формат. Профили управляют только собственными настройками и встроенными улучшениями CS:L.
 
 Кнопка проверки обновлений читает `config/launcher-update.json`, сравнивает SemVer, скачивает архив в `%AppData%\\CssLauncher\\updates` и проверяет SHA-256 до использования. Диагностический архив собирается в `%AppData%\\CssLauncher\\backups` и включает настройки, логи, сведения о версии Steam и профиль без копирования файлов Valve.
 
-Конфигурации 0.3 копируются в output автоматически: `mods.example.json`, `servers.example.json` и `launcher-update.json`. Для сборки Windows нужен .NET 8 SDK; текущий Sandbox не содержит `dotnet`, поэтому здесь выполнены статические проверки XAML-событий и JSON, а не компиляция WPF.
+Конфигурации 0.3 копируются в output автоматически: `servers.example.json` и `launcher-update.json`. Для сборки Windows нужен .NET 8 SDK; текущий Sandbox не содержит `dotnet`, поэтому здесь выполнены статические проверки XAML-событий и JSON, а не компиляция WPF.

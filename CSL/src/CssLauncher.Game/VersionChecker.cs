@@ -30,7 +30,7 @@ public sealed class VersionChecker : IVersionChecker
         if (manifest.EnableSha256Checks && manifest.Variants is { Count: > 0 }) mismatches.AddRange(await CheckHashesAsync(gameRoot, manifest.Variants, ct));
         var message = clientVersion is null
             ? "cstrike/steam.inf не найден или не содержит ClientVersion/PatchVersion. Продолжение возможно только в диагностическом режиме или после явного подтверждения."
-            : known ? $"ClientVersion {clientVersion} подтверждён; Steam buildid: {buildId ?? "не определён"}." : $"Установлена ClientVersion {clientVersion}, моды проверены для версии {manifest.Version}. Возможна несовместимость. Steam buildid: {buildId ?? "не определён"}.";
+            : known ? $"ClientVersion {clientVersion} подтверждён; Steam buildid: {buildId ?? "не определён"}." : $"Установлена ClientVersion {clientVersion}, встроенные расширения CS:L проверены для версии {manifest.Version}. Возможна несовместимость. Steam buildid: {buildId ?? "не определён"}.";
         return new(known ? VersionStatus.Confirmed : VersionStatus.UnknownBuild, mismatches, buildId, executable.PreferredPath, message, clientVersion);
     }
 

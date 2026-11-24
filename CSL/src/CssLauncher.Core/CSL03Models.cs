@@ -10,14 +10,6 @@ public sealed record LauncherProfile(
     bool Noborder = false,
     string Extra = "");
 
-public sealed record InstalledMod(
-    string Id,
-    string Name,
-    string Version,
-    string Description,
-    string InstallPath,
-    bool Enabled);
-
 public sealed record ServerEntry(
     string Name,
     string Address,

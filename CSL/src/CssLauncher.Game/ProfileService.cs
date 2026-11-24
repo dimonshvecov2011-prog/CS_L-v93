@@ -9,8 +9,6 @@ public sealed class ProfileService : IProfileService
         var root = Directory.GetParent(Directory.GetParent(_profile)!.FullName)!.FullName;
         Directory.CreateDirectory(_profile);
         Directory.CreateDirectory(Path.Combine(_profile, "custom"));
-        Directory.CreateDirectory(Path.Combine(root, "mods"));
-        Directory.CreateDirectory(Path.Combine(root, "downloads"));
         Directory.CreateDirectory(Path.Combine(root, "backups"));
         var text = await File.ReadAllTextAsync(_template, ct);
         text = text.Replace("{GAME_ROOT}", gameRoot.Replace("\\", "/"));
