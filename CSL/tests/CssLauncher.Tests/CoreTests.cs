@@ -649,6 +649,7 @@ public class CoreTests
             logger.Message += _ => throw new InvalidOperationException("subscriber failure");
             logger.Message += _ => observed++;
             logger.Error("operation failed", new InvalidOperationException("exception details"));
+            logger.Dispose();
 
             var logFile = Assert.Single(Directory.GetFiles(Path.Combine(temp, "CssLauncher", "logs"), "*.log"));
             var text = await File.ReadAllTextAsync(logFile);
@@ -667,6 +668,7 @@ public class CoreTests
         {
             using var logger = new FileLogger(temp);
             logger.Info(new string('Ж', 3_000_000));
+            logger.Dispose();
 
             var logFile = Assert.Single(Directory.GetFiles(Path.Combine(temp, "CssLauncher", "logs"), "*.log"));
             Assert.True(new FileInfo(logFile).Length <= 5L * 1024 * 1024);
