@@ -22,10 +22,6 @@ env:
   DOTNET_CLI_TELEMETRY_OPTOUT: true
   PUBLISH_DIR: artifacts/publish/win-x64
 
-defaults:
-  run:
-    working-directory: CSL
-
 jobs:
   build-windows:
     runs-on: windows-latest
@@ -40,15 +36,19 @@ jobs:
 
       - name: Restore
         run: dotnet restore .\CssLauncher.sln
+          working-directory: CSL
 
       - name: Build
         run: dotnet build .\CssLauncher.sln -c Release --no-restore
+          working-directory: CSL
 
       - name: Test
         run: dotnet test .\tests\CssLauncher.Tests\CssLauncher.Tests.csproj -c Release --no-build --no-restore
+          working-directory: CSL
 
       - name: Publish self-contained single-file app
         shell: pwsh
+        working-directory: CSL
         run: |
           if (Test-Path $env:PUBLISH_DIR) { Remove-Item $env:PUBLISH_DIR -Recurse -Force }
           New-Item -ItemType Directory -Path $env:PUBLISH_DIR -Force | Out-Null
@@ -62,9 +62,11 @@ jobs:
       - name: Install Inno Setup
         shell: pwsh
         run: choco install innosetup --yes --no-progress
+          working-directory: CSL
 
       - name: Build installer
         shell: pwsh
+        working-directory: CSL
         run: |
           $iscc = (Get-Command ISCC.exe -ErrorAction Stop).Source
           & $iscc ".\installer\CSL-Setup.iss"
