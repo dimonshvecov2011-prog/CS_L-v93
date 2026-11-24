@@ -11,7 +11,7 @@
     <RootNamespace>CssLauncher.App</RootNamespace>
     <Product>CS:L Launcher</Product>
     <Description>CS:L — Counter-Strike: Source launcher</Description>
-    <Version>0.2.0</Version>
+    <Version>0.3.0</Version>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../CssLauncher.Core/CssLauncher.Core.csproj" />
@@ -20,6 +20,9 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="../../config/version-manifest.v93.json" Link="config/version-manifest.v93.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../config/mods.example.json" Link="config/mods.example.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../config/servers.example.json" Link="config/servers.example.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../config/launcher-update.json" Link="config/launcher-update.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../../templates/gameinfo.template.txt" Link="templates/gameinfo.template.txt" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

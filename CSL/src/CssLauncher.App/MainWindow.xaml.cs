@@ -1,125 +1,88 @@
 using System.Diagnostics;
 using System.IO;
 using System.Windows;
+using System.Windows.Controls;
 using Forms = System.Windows.Forms;
+using CssLauncher.Core;
 using CssLauncher.Game;
 using CssLauncher.Infrastructure;
-using CssLauncher.Core;
 
 namespace CssLauncher.App;
 
 public partial class MainWindow : Window
 {
-    private readonly FileLogger _logger;
+    private readonly FileLogger _logger = new();
     private readonly JsonSettingsService _settings = new();
     private readonly string _root = AppContext.BaseDirectory;
     private readonly string _dataRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "CssLauncher");
+    private readonly ProfileCatalogService _profiles = new();
+    private readonly ModCatalogService _modCatalog = new();
+    private readonly ServerListService _servers = new();
+    private readonly LauncherUpdateService _updates = new();
+    private readonly DiagnosticArchiveService _diagnostics = new();
     private VersionCheckResult? _check;
+    private ModManifest? _manifest;
+    private LauncherProfile _activeProfile = ProfileCatalogService.BuiltInProfiles[0];
     private CancellationTokenSource? _installCts;
 
     public MainWindow()
     {
         InitializeComponent();
-        _logger = new FileLogger();
-        _logger.Message += m => Dispatcher.Invoke(() => { LogBox.AppendText(m + Environment.NewLine); LogBox.ScrollToEnd(); });
-        Loaded += async (_, _) => await LoadSettingsAsync();
-        Closing += async (_, _) => { _installCts?.Cancel(); await SaveSettingsAsync(); _logger.Dispose(); };
+        _logger.Message += m => Dispatcher.Invoke(() => { LogBoxFallback(m); });
+        Loaded += async (_, _) => await LoadAsync();
+        Closing += async (_, _) => { _installCts?.Cancel(); await SaveAsync(); _logger.Dispose(); };
     }
-
-    private async Task LoadSettingsAsync()
+    private void LogBoxFallback(string message) { HintText.Text = message.Length > 100 ? message[..100] : message; }
+    private async Task LoadAsync()
     {
-        Directory.CreateDirectory(Path.Combine(_dataRoot, "profiles", "default", "custom"));
-        Directory.CreateDirectory(Path.Combine(_dataRoot, "mods"));
-        Directory.CreateDirectory(Path.Combine(_dataRoot, "downloads"));
-        Directory.CreateDirectory(Path.Combine(_dataRoot, "backups"));
-        var s = await _settings.LoadAsync();
-        GamePathBox.Text = s.GamePath;
-        DiagnosticBox.IsChecked = s.DiagnosticMode;
-        SteamBox.IsChecked = s.EffectiveLaunchOptions.Steam;
-        NovidBox.IsChecked = s.EffectiveLaunchOptions.Novid;
-        ConsoleBox.IsChecked = s.EffectiveLaunchOptions.Console;
-        WindowedBox.IsChecked = s.EffectiveLaunchOptions.Windowed;
-        NoborderBox.IsChecked = s.EffectiveLaunchOptions.Noborder;
-        if (!string.IsNullOrWhiteSpace(s.EffectiveLaunchOptions.Executable)) ExecutableBox.Text = s.EffectiveLaunchOptions.Executable;
-        if (!string.IsNullOrWhiteSpace(s.GamePath)) await CheckPathAsync(s.GamePath); else await AutoDetectAsync();
+        foreach (var profile in ProfileCatalogService.BuiltInProfiles) { ProfileBox.Items.Add(profile); ProfilesList.Items.Add(profile); }
+        ProfileBox.SelectedIndex = 0; ProfilesList.SelectedIndex = 0;
+        Directory.CreateDirectory(Path.Combine(_dataRoot, "mods")); Directory.CreateDirectory(Path.Combine(_dataRoot, "downloads")); Directory.CreateDirectory(Path.Combine(_dataRoot, "backups"));
+        var settings = await _settings.LoadAsync(); GamePathBoxCompat(settings.GamePath); DiagnosticBox.IsChecked = settings.DiagnosticMode;
+        SteamBox.IsChecked = settings.EffectiveLaunchOptions.Steam; NovidBox.IsChecked = settings.EffectiveLaunchOptions.Novid; ConsoleBox.IsChecked = settings.EffectiveLaunchOptions.Console;
+        if (!string.IsNullOrWhiteSpace(settings.GamePath)) await CheckPathAsync(settings.GamePath); else await AutoDetectAsync();
     }
-
-    private Task SaveSettingsAsync() => _settings.SaveAsync(new LauncherSettings(GamePathBox.Text, BuildLaunchOptions(), DiagnosticBox.IsChecked == true));
-    private LaunchOptions BuildLaunchOptions() => new(NovidBox.IsChecked == true, ConsoleBox.IsChecked == true, WindowedBox.IsChecked == true, NoborderBox.IsChecked == true, Steam: SteamBox.IsChecked == true, Executable: ExecutableBox.Text ?? "");
-
+    private void GamePathBoxCompat(string path) { PathText.Text = string.IsNullOrWhiteSpace(path) ? "Укажите папку или установите игру через Steam" : path; }
+    private Task SaveAsync() => _settings.SaveAsync(new LauncherSettings(PathText.Text ?? "", new LaunchOptions(NovidBox.IsChecked == true, ConsoleBox.IsChecked == true, Steam: SteamBox.IsChecked == true), DiagnosticBox.IsChecked == true));
     private async Task AutoDetectAsync()
     {
         StatusText.Text = "Ищем CS:S в библиотеках Steam...";
-        var candidate = (await new GameLocator(GamePathBox.Text).FindCandidatesAsync(CancellationToken.None)).FirstOrDefault();
-        if (candidate is null) { StatusText.Text = "CS:S не найдена"; SideStatusText.Text = "Не установлена"; HintText.Text = "Установите игру через Steam"; _logger.Info("CS:S не найдена. Можно запустить официальную установку через Steam."); return; }
-        GamePathBox.Text = candidate.RootPath;
-        await CheckPathAsync(candidate.RootPath);
+        var candidate = (await new GameLocator().FindCandidatesAsync(CancellationToken.None)).FirstOrDefault();
+        if (candidate is null) { StatusText.Text = "CS:S не найдена"; SideStatusText.Text = "Не установлена"; HintText.Text = "Установите игру через Steam"; return; }
+        PathText.Text = candidate.RootPath; await CheckPathAsync(candidate.RootPath);
     }
-
     private async Task CheckPathAsync(string path)
     {
-        if (string.IsNullOrWhiteSpace(path) || !Directory.Exists(path))
-        {
-            _check = null; StatusText.Text = "Папка игры не найдена"; PathText.Text = "Установите CS:S через Steam или выберите папку вручную"; SideStatusText.Text = "Не подключено"; SideVersionText.Text = "—"; UpdatePlayState(); return;
-        }
-        var manifest = Path.Combine(_root, "config", "version-manifest.v93.json");
-        _check = await new VersionChecker(manifest).CheckAsync(path);
-        if (!string.IsNullOrWhiteSpace(_check.ExecutablePath)) ExecutableBox.Text = Path.GetFileName(_check.ExecutablePath);
-        StatusText.Text = _check.Status == VersionStatus.Confirmed ? "CS:S готова к запуску" : "Версия требует подтверждения";
-        PathText.Text = path;
-        BuildText.Text = $"ClientVersion: {_check.ClientVersion ?? "—"}   •   Steam buildid: {_check.BuildId ?? "—"}";
-        SideStatusText.Text = _check.Status == VersionStatus.Confirmed ? "Готова" : "Проверить сборку";
-        SideVersionText.Text = _check.ClientVersion is null ? "—" : $"v{_check.ClientVersion}";
-        _logger.Info($"ClientVersion: {_check.ClientVersion ?? "не определён"}; Steam buildid: {_check.BuildId ?? "не определён"}; exe: {_check.ExecutablePath ?? "не найден"}; статус: {_check.Status}");
+        if (string.IsNullOrWhiteSpace(path) || !Directory.Exists(path)) { _check = null; StatusText.Text = "Папка игры не найдена"; SideStatusText.Text = "Не подключено"; UpdatePlayState(); return; }
+        var manifest = Path.Combine(_root, "config", "version-manifest.v93.json"); _check = await new VersionChecker(manifest).CheckAsync(path);
+        PathText.Text = path; BuildText.Text = $"ClientVersion: {_check.ClientVersion ?? "—"}   •   Steam buildid: {_check.BuildId ?? "—"}";
+        StatusText.Text = _check.Status == VersionStatus.Confirmed ? "CS:S готова к запуску" : "Версия требует подтверждения"; SideStatusText.Text = _check.Status == VersionStatus.Confirmed ? "Готова" : "Проверить сборку"; SideVersionText.Text = _check.ClientVersion is null ? "—" : $"v{_check.ClientVersion}"; UpdatePlayState();
         if (!string.IsNullOrWhiteSpace(_check.Message)) _logger.Warning(_check.Message);
-        foreach (var m in _check.Mismatches) _logger.Warning($"{m.Path}: {m.Kind}, expected={m.Expected}, actual={m.Actual}");
-        UpdatePlayState();
     }
-
-    private void ChooseFolder_Click(object sender, RoutedEventArgs e)
-    {
-        using var dialog = new Forms.FolderBrowserDialog { Description = "Выберите папку Counter-Strike Source" };
-        if (dialog.ShowDialog() == Forms.DialogResult.OK) { GamePathBox.Text = dialog.SelectedPath; _ = CheckPathAsync(dialog.SelectedPath); }
-    }
-
+    private void ChooseFolder_Click(object sender, RoutedEventArgs e) { using var dialog = new Forms.FolderBrowserDialog { Description = "Выберите папку Counter-Strike Source" }; if (dialog.ShowDialog() == Forms.DialogResult.OK) _ = CheckPathAsync(dialog.SelectedPath); }
     private async void InstallGame_Click(object sender, RoutedEventArgs e)
     {
-        if (_installCts is not null) return;
-        try
-        {
-            Process.Start(new ProcessStartInfo { FileName = "steam://install/240", UseShellExecute = true });
-            _logger.Info("Открыт официальный Steam URI steam://install/240. Файлы игры загружает Steam.");
-            InstallButton.Content = "Ожидаем Steam..."; InstallButton.IsEnabled = false; HintText.Text = "Steam устанавливает CS:S. Это может занять время...";
-            _installCts = new CancellationTokenSource();
-            var deadline = DateTime.UtcNow.AddMinutes(30);
-            while (!_installCts.Token.IsCancellationRequested && DateTime.UtcNow < deadline)
-            {
-                await Task.Delay(TimeSpan.FromSeconds(4), _installCts.Token);
-                var candidate = (await new GameLocator().FindCandidatesAsync(_installCts.Token)).FirstOrDefault();
-                if (candidate is null) continue;
-                GamePathBox.Text = candidate.RootPath; _logger.Info($"Steam завершил установку, игра найдена: {candidate.RootPath}"); await CheckPathAsync(candidate.RootPath); break;
-            }
-            if (DateTime.UtcNow >= deadline) { HintText.Text = "Не нашли игру за 30 минут. Можно проверить Steam и повторить."; _logger.Warning("Ожидание установки Steam завершено по таймауту 30 минут."); }
-        }
-        catch (OperationCanceledException) { }
-        catch (Exception ex) { _logger.Error("Не удалось открыть официальный установщик Steam.", ex); System.Windows.MessageBox.Show("Не удалось открыть Steam. Убедитесь, что Steam установлен и запущен.", "CS:L", MessageBoxButton.OK, MessageBoxImage.Warning); }
-        finally { _installCts?.Dispose(); _installCts = null; InstallButton.Content = "Установить через Steam"; InstallButton.IsEnabled = true; }
+        if (_installCts is not null) return; try { Process.Start(new ProcessStartInfo { FileName = "steam://install/240", UseShellExecute = true }); _logger.Info("Открыт официальный Steam URI steam://install/240."); InstallButton.IsEnabled = false; _installCts = new CancellationTokenSource();
+            var deadline = DateTime.UtcNow.AddMinutes(30); while (DateTime.UtcNow < deadline && !_installCts.Token.IsCancellationRequested) { await Task.Delay(4000, _installCts.Token); var c = (await new GameLocator().FindCandidatesAsync(_installCts.Token)).FirstOrDefault(); if (c is null) continue; await CheckPathAsync(c.RootPath); break; }
+        } catch (OperationCanceledException) { } catch (Exception ex) { _logger.Error("Не удалось открыть Steam.", ex); } finally { _installCts?.Dispose(); _installCts = null; InstallButton.IsEnabled = true; }
     }
-
-    private void OpenMods_Click(object sender, RoutedEventArgs e) => OpenFolder(Path.Combine(_dataRoot, "mods"));
-    private void OpenProfile_Click(object sender, RoutedEventArgs e) => OpenFolder(Path.Combine(_dataRoot, "profiles", "default"));
-    private static void OpenFolder(string path) { Directory.CreateDirectory(path); Process.Start(new ProcessStartInfo { FileName = "explorer.exe", Arguments = $"\"{path}\"", UseShellExecute = true }); }
-    private void DiagnosticChanged(object sender, RoutedEventArgs e) { if (DiagnosticBox.IsChecked == true) _logger.Warning("Диагностический режим включён: версия не подтверждена."); UpdatePlayState(); }
+    private void ProfileChanged(object sender, SelectionChangedEventArgs e) { if (ProfileBox.SelectedItem is LauncherProfile p) { _activeProfile = p; ProfileDescriptionText.Text = p.Description; _ = RefreshModsAsync(); } }
+    private void ApplyProfile_Click(object sender, RoutedEventArgs e) { if (ProfilesList.SelectedItem is LauncherProfile p) { _activeProfile = p; ProfileBox.SelectedItem = p; HintText.Text = $"Профиль {p.Name} выбран"; } }
     private void UpdatePlayState() => PlayButton.IsEnabled = _check?.Status == VersionStatus.Confirmed || (_check?.Status == VersionStatus.UnknownBuild && DiagnosticBox.IsChecked == true);
-
+    private void DiagnosticChanged(object sender, RoutedEventArgs e) { UpdatePlayState(); if (DiagnosticBox.IsChecked == true) _logger.Warning("Диагностический режим включён."); }
+    private LaunchOptions BuildOptions() => new(NovidBox.IsChecked == true, ConsoleBox.IsChecked == true, Steam: SteamBox.IsChecked == true, Extra: _activeProfile.Extra);
     private async void Play_Click(object sender, RoutedEventArgs e)
-    {
-        try
-        {
-            if (_check?.Status == VersionStatus.UnknownBuild) _logger.Warning("Запуск неизвестной сборки в диагностическом режиме.");
-            var profile = await new ProfileService(Path.Combine(_root, "templates", "gameinfo.template.txt")).CreateOrUpdateAsync(GamePathBox.Text);
-            await new GameLauncher().LaunchAsync(GamePathBox.Text, profile, BuildLaunchOptions(), _logger.Info);
-        }
-        catch (Exception ex) { _logger.Error("Ошибка запуска.", ex); System.Windows.MessageBox.Show(ex.Message, "CS:L", MessageBoxButton.OK, MessageBoxImage.Error); }
-    }
+    { try { var path = await _profiles.PrepareAsync(PathText.Text, _activeProfile, Path.Combine(_root, "templates", "gameinfo.template.txt")); await new GameLauncher().LaunchAsync(PathText.Text, path, BuildOptions(), _logger.Info); } catch (Exception ex) { _logger.Error("Ошибка запуска.", ex); System.Windows.MessageBox.Show(ex.Message, "CS:L", MessageBoxButton.OK, MessageBoxImage.Error); } }
+    private async void LoadMods_Click(object sender, RoutedEventArgs e) { try { _manifest = await new ModPackageService().ReadManifestAsync(Path.Combine(_root, "config", "mods.example.json")); await RefreshModsAsync(); } catch (Exception ex) { ModsDetailText.Text = ex.Message; } }
+    private async Task RefreshModsAsync() { if (_manifest is null) return; var items = await _modCatalog.ListAsync(_manifest, _activeProfile.Id); ModsList.ItemsSource = items; ModsSummaryText.Text = $"{items.Count} модов, включено: {items.Count(x => x.Enabled)}"; }
+    private async void InstallMod_Click(object sender, RoutedEventArgs e) { if (_manifest is null || ModsList.SelectedItem is not InstalledMod selected) return; var mod = _manifest.Mods.First(x => x.Id == selected.Id); try { await _modCatalog.InstallAsync(mod); await RefreshModsAsync(); ModsDetailText.Text = $"Мод {mod.Name} установлен."; } catch (Exception ex) { ModsDetailText.Text = ex.Message; } }
+    private async void ToggleMod_Click(object sender, RoutedEventArgs e) { if (_manifest is null || ModsList.SelectedItem is not InstalledMod selected) return; try { await _modCatalog.SetEnabledAsync(_manifest, selected.Id, !selected.Enabled, _activeProfile.Id); await RefreshModsAsync(); } catch (Exception ex) { ModsDetailText.Text = ex.Message; } }
+    private async void LoadServers_Click(object sender, RoutedEventArgs e) { try { var list = await _servers.LoadAsync(Path.Combine(_root, ServerSourceBox.Text)); ServersList.ItemsSource = list.Servers; ServerDetailText.Text = $"Обновлено: {list.UpdatedAt}; серверов: {list.Servers.Count}"; } catch (Exception ex) { ServerDetailText.Text = $"Не удалось загрузить список: {ex.Message}"; } }
+    private async void CheckUpdate_Click(object sender, RoutedEventArgs e) { var result = await _updates.CheckAsync(Path.Combine(_root, "config", "launcher-update.json"), "0.3.0"); UpdateStatusText.Text = result.Message; if (result.Available && result.Update is not null) try { var file = await _updates.DownloadAsync(result.Update); UpdateStatusText.Text = $"Обновление скачано: {file}"; } catch (Exception ex) { UpdateStatusText.Text = ex.Message; } }
+    private async void CreateDiagnostic_Click(object sender, RoutedEventArgs e) { try { var archive = await _diagnostics.CreateAsync(PathText.Text, _activeProfile.Id); DiagnosticStatusText.Text = $"Создан архив: {archive.ArchivePath} ({archive.FilesIncluded} файлов)"; } catch (Exception ex) { DiagnosticStatusText.Text = ex.Message; } }
+    private void HomeNav_Click(object sender, RoutedEventArgs e) => MainTabs.SelectedIndex = 0;
+    private void ModsNav_Click(object sender, RoutedEventArgs e) => MainTabs.SelectedIndex = 1;
+    private void ProfilesNav_Click(object sender, RoutedEventArgs e) => MainTabs.SelectedIndex = 2;
+    private void ServersNav_Click(object sender, RoutedEventArgs e) => MainTabs.SelectedIndex = 3;
+    private void DiagnosticsNav_Click(object sender, RoutedEventArgs e) => MainTabs.SelectedIndex = 4;
 }
