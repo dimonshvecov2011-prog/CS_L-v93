@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <AssemblyName>CSL</AssemblyName>
+    <RootNamespace>CssLauncher.App</RootNamespace>
+    <Product>CS:L Launcher</Product>
+    <Description>CS:L — Counter-Strike: Source launcher</Description>
+    <Version>0.2.0</Version>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../CssLauncher.Core/CssLauncher.Core.csproj" />
+    <ProjectReference Include="../CssLauncher.Game/CssLauncher.Game.csproj" />
+    <ProjectReference Include="../CssLauncher.Infrastructure/CssLauncher.Infrastructure.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="../../config/version-manifest.v93.json" Link="config/version-manifest.v93.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../templates/gameinfo.template.txt" Link="templates/gameinfo.template.txt" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

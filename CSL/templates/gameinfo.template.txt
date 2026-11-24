@@ -1,0 +1,39 @@
+"GameInfo"
+{
+    game        "CS:S Steam Profile"
+    title       ""
+    type        multiplayer_only
+
+    FileSystem
+    {
+        SteamAppId 240
+        SearchPaths
+        {
+            // Profile-owned custom content must be searched first.
+            game+mod+custom_mod   |gameinfo_path|custom/*
+
+            // Official CS:S VPK content.
+            game+mod              "{GAME_ROOT}/cstrike/cstrike_english.vpk"
+            game+mod              "{GAME_ROOT}/cstrike/cstrike_pak.vpk"
+
+            // Official Source / HL2 VPK content.
+            game                  "{GAME_ROOT}/hl2/hl2_textures.vpk"
+            game                  "{GAME_ROOT}/hl2/hl2_sound_vo_english.vpk"
+            game                  "{GAME_ROOT}/hl2/hl2_sound_misc.vpk"
+            game                  "{GAME_ROOT}/hl2/hl2_misc.vpk"
+            platform              "{GAME_ROOT}/platform/platform_misc.vpk"
+
+            // Profile directory and original loose files.
+            mod+mod_write+default_write_path  |gameinfo_path|.
+            game+game_write                   "{GAME_ROOT}/cstrike"
+            gamebin                           "{GAME_ROOT}/cstrike/bin"
+
+            // Shared loose Source / HL2 files.
+            game                  "{GAME_ROOT}/hl2"
+            platform              "{GAME_ROOT}/platform"
+
+            // Server downloads are searched last.
+            game+download         "{GAME_ROOT}/cstrike/download"
+        }
+    }
+}

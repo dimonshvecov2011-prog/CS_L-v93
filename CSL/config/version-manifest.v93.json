@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 2,
+  "game": "Counter-Strike Source",
+  "version": "current-steam",
+  "knownVersions": [11003710],
+  "knownBuilds": [25338318],
+  "enableSha256Checks": false,
+  "variants": []
+}

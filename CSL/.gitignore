@@ -1,0 +1,10 @@
+.vs/
+bin/
+obj/
+*.user
+*.suo
+publish/
+artifacts/
+# Never commit local game files or generated user data
+*.exe
+profiles/
