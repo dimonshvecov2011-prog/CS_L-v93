@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches: [ main ]
-    tags: [ 'csl-v*' ]
+    tags: [ 'csl-v*', 'v*' ]
     paths:
       - 'CSL/**'
       - '.github/workflows/build-csl.yml'
@@ -35,7 +35,7 @@ jobs:
           dotnet-version: 8.0.x
 
       - name: Restore
-        run: dotnet restore .\CSL\CssLauncher.sln
+        run: dotnet restore .\CSL\CssLauncher.sln -r win-x64
 
       - name: Build
         run: dotnet build .\CSL\CssLauncher.sln -c Release --no-restore
@@ -83,7 +83,7 @@ jobs:
           retention-days: 30
 
       - name: Create GitHub release for CS:L tag
-        if: startsWith(github.ref, 'refs/tags/csl-v')
+        if: startsWith(github.ref, 'refs/tags/csl-v') || startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
