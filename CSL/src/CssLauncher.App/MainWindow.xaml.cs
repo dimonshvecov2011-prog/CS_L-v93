@@ -102,7 +102,7 @@ public partial class MainWindow : Window
             if (DateTime.UtcNow >= deadline) { HintText.Text = "Не нашли игру за 30 минут. Можно проверить Steam и повторить."; _logger.Warning("Ожидание установки Steam завершено по таймауту 30 минут."); }
         }
         catch (OperationCanceledException) { }
-        catch (Exception ex) { _logger.Error("Не удалось открыть официальный установщик Steam.", ex); MessageBox.Show("Не удалось открыть Steam. Убедитесь, что Steam установлен и запущен.", "CS:L", MessageBoxButton.OK, MessageBoxImage.Warning); }
+        catch (Exception ex) { _logger.Error("Не удалось открыть официальный установщик Steam.", ex); System.Windows.MessageBox.Show("Не удалось открыть Steam. Убедитесь, что Steam установлен и запущен.", "CS:L", MessageBoxButton.OK, MessageBoxImage.Warning); }
         finally { _installCts?.Dispose(); _installCts = null; InstallButton.Content = "Установить через Steam"; InstallButton.IsEnabled = true; }
     }
 
@@ -120,6 +120,6 @@ public partial class MainWindow : Window
             var profile = await new ProfileService(Path.Combine(_root, "templates", "gameinfo.template.txt")).CreateOrUpdateAsync(GamePathBox.Text);
             await new GameLauncher().LaunchAsync(GamePathBox.Text, profile, BuildLaunchOptions(), _logger.Info);
         }
-        catch (Exception ex) { _logger.Error("Ошибка запуска.", ex); MessageBox.Show(ex.Message, "CS:L", MessageBoxButton.OK, MessageBoxImage.Error); }
+        catch (Exception ex) { _logger.Error("Ошибка запуска.", ex); System.Windows.MessageBox.Show(ex.Message, "CS:L", MessageBoxButton.OK, MessageBoxImage.Error); }
     }
 }
