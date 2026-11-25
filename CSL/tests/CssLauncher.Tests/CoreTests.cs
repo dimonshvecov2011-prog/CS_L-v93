@@ -225,6 +225,74 @@ public class CoreTests
     }
 
     [Fact]
+    public async Task ProfileCatalogCopiesOfficialSearchPathsAndAcceptsVpkDirectoryVariant()
+    {
+        var app = TempDirectory("CssOfficialGameInfoApp");
+        var library = TempDirectory("CssOfficialGameInfoGame");
+        try
+        {
+            var game = Path.Combine(library, "steamapps", "common", "Counter-Strike Source");
+            Directory.CreateDirectory(Path.Combine(game, "cstrike"));
+            Directory.CreateDirectory(Path.Combine(game, "hl2"));
+            Directory.CreateDirectory(Path.Combine(game, "platform"));
+            await File.WriteAllTextAsync(Path.Combine(game, "cstrike", "cstrike_pak_dir.vpk"), "vpk");
+            await File.WriteAllTextAsync(Path.Combine(game, "cstrike", "cstrike_pak_000.vpk"), "vpk");
+            await File.WriteAllTextAsync(Path.Combine(game, "hl2", "hl2_misc_dir.vpk"), "vpk");
+            await File.WriteAllTextAsync(Path.Combine(game, "platform", "platform_misc_dir.vpk"), "vpk");
+            await File.WriteAllTextAsync(Path.Combine(game, "cstrike", "gameinfo.txt"), """
+                "GameInfo"
+                {
+                    game "Counter-Strike: Source"
+                    FileSystem
+                    {
+                        SteamAppId 240
+                        SearchPaths
+                        {
+                            game+mod+custom_mod   |gameinfo_path|custom/*
+                            game+mod              |all_source_engine_paths|cstrike/cstrike_pak.vpk
+                            game                  |all_source_engine_paths|cstrike/cstrike_pak_000.vpk
+                            game                  |all_source_engine_paths|hl2/hl2_misc.vpk
+                            platform              |all_source_engine_paths|platform/platform_misc.vpk
+                            game+download         |all_source_engine_paths|cstrike/download
+                        }
+                    }
+                }
+                """);
+
+            var service = new ProfileCatalogService(app);
+            var profilePath = await service.PrepareFromGameInfoAsync(game, service.Get("classic"));
+            var generated = await File.ReadAllTextAsync(Path.Combine(profilePath, "gameinfo.txt"));
+            var normalizedGame = Path.GetFullPath(game).Replace('\\', '/');
+
+            Assert.Contains($"{normalizedGame}/cstrike/cstrike_pak.vpk", generated);
+            Assert.Contains($"{normalizedGame}/cstrike/cstrike_pak_000.vpk", generated);
+            Assert.Contains($"{normalizedGame}/hl2/hl2_misc.vpk", generated);
+            Assert.Contains($"{normalizedGame}/platform/platform_misc.vpk", generated);
+            Assert.Contains("game+mod+custom_mod", generated);
+            Assert.Contains(Path.Combine(profilePath, "custom").Replace('\\', '/'), generated);
+            Assert.Empty(service.ValidateProfile(profilePath, game));
+        }
+        finally { DeleteDirectory(app); DeleteDirectory(library); }
+    }
+
+    [Fact]
+    public async Task ProfileGenerationFailsClearlyWhenOfficialGameInfoIsMissing()
+    {
+        var app = TempDirectory("CssMissingOfficialGameInfoApp");
+        var game = TempDirectory("CssMissingOfficialGameInfoGame");
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(game, "cstrike"));
+            var service = new ProfileCatalogService(app);
+            var error = await Assert.ThrowsAsync<FileNotFoundException>(() =>
+                service.PrepareFromGameInfoAsync(game, service.Get("classic")));
+            Assert.True(error.Message.Contains("official cstrike", StringComparison.OrdinalIgnoreCase));
+            Assert.False(Directory.Exists(service.GetPath("classic")));
+        }
+        finally { DeleteDirectory(app); DeleteDirectory(game); }
+    }
+
+    [Fact]
     public async Task ProfileGenerationKeepsPreviousValidVersionAndRollbackRestoresIt()
     {
         var app = TempDirectory("CssProfileRollbackApp");

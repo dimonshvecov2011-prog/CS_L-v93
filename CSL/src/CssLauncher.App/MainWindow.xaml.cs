@@ -315,10 +315,9 @@ public partial class MainWindow : Window
         {
             if (string.IsNullOrWhiteSpace(_gamePath) || !Directory.Exists(_gamePath))
                 throw new DirectoryNotFoundException("Для пересоздания профиля сначала укажите папку CS:S.");
-            if (WpfMessageBox.Show($"Пересоздать профиль «{_activeProfile.Name}» по заводскому шаблону? Текущая версия будет сохранена для отката.",
+            if (WpfMessageBox.Show($"Пересоздать профиль «{_activeProfile.Name}» по официальному cstrike/gameinfo.txt? Текущая версия будет сохранена для отката.",
                     "CS:L — сброс профиля", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
-            var path = await _profiles.ResetToFactoryAsync(_gamePath, _activeProfile.Id,
-                Path.Combine(_root, "templates", "gameinfo.template.txt"));
+            var path = await _profiles.ResetToFactoryFromGameInfoAsync(_gamePath, _activeProfile.Id);
             var errors = _profiles.ValidateProfile(path, _gamePath);
             if (errors.Count > 0) throw new InvalidDataException("Созданный профиль не прошёл проверку:\n" + string.Join("\n", errors));
             _logger.Info($"Профиль {_activeProfile.Id} сброшен к заводскому.");
@@ -338,7 +337,7 @@ public partial class MainWindow : Window
         {
             if (WpfMessageBox.Show("Выполнить factory reset CS:L? Настройки вернутся к значениям по умолчанию, а все созданные профили будут заменены или убраны в резервные копии. Игровые файлы не затрагиваются.",
                     "CS:L — подтверждение factory reset", MessageBoxButton.YesNo, MessageBoxImage.Stop) != MessageBoxResult.Yes) return;
-            await _profiles.ResetAllToFactoryAsync(_gamePath, Path.Combine(_root, "templates", "gameinfo.template.txt"));
+            await _profiles.ResetAllToFactoryFromGameInfoAsync(_gamePath);
             _settingsLoadFailed = false;
             SetPathText("");
             _savedExecutable = "";
@@ -690,11 +689,10 @@ public partial class MainWindow : Window
                 var existingErrors = _profiles.ValidateProfile(existingProfile, _gamePath);
                 if (existingErrors.Count > 0 && WpfMessageBox.Show(
                         "Профиль не прошёл проверку:\n" + string.Join("\n", existingErrors) +
-                        "\n\nСоздать заново по штатному шаблону? Текущая папка будет сохранена для отката.",
+                        "\n\nСоздать заново по официальному cstrike/gameinfo.txt? Текущая папка будет сохранена для отката.",
                         "CS:L — целостность профиля", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
             }
-            var profilePath = await _profiles.PrepareAsync(
-                _gamePath, _activeProfile, Path.Combine(_root, "templates", "gameinfo.template.txt"));
+            var profilePath = await _profiles.PrepareFromGameInfoAsync(_gamePath, _activeProfile);
             var profileErrors = _profiles.ValidateProfile(profilePath, _gamePath);
             if (profileErrors.Count > 0) throw new InvalidDataException("Профиль не прошёл финальную проверку:\n" + string.Join("\n", profileErrors));
             var gameRoot = Path.GetFullPath(_gamePath).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;

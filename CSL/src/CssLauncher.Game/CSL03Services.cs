@@ -45,17 +45,24 @@ public sealed class ProfileCatalogService
     }
 
     public Task<string> PrepareAsync(string gameRoot, LauncherProfile profile, string templatePath, CancellationToken ct = default) =>
-        PrepareCoreAsync(gameRoot, profile, templatePath, preserveExistingData: true, reuseIfCurrent: true, ct: ct);
+        PrepareCoreAsync(gameRoot, profile, async token =>
+        {
+            if (!File.Exists(templatePath)) throw new FileNotFoundException("Не найден шаблон gameinfo.", templatePath);
+            return await File.ReadAllTextAsync(templatePath, token);
+        }, preserveExistingData: true, reuseIfCurrent: true, ct: ct);
 
-    private async Task<string> PrepareCoreAsync(string gameRoot, LauncherProfile profile, string templatePath,
+    public Task<string> PrepareFromGameInfoAsync(string gameRoot, LauncherProfile profile, CancellationToken ct = default) =>
+        PrepareCoreAsync(gameRoot, profile, token => ReadOfficialGameInfoAsync(gameRoot, token),
+            preserveExistingData: true, reuseIfCurrent: true, ct: ct);
+
+    private async Task<string> PrepareCoreAsync(string gameRoot, LauncherProfile profile,
+        Func<CancellationToken, Task<string>> gameInfoFactory,
         bool preserveExistingData, bool reuseIfCurrent, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
         if (string.IsNullOrWhiteSpace(gameRoot) || !Directory.Exists(gameRoot))
             throw new DirectoryNotFoundException("Папка игры не найдена.");
         if (profile is null) throw new ArgumentNullException(nameof(profile));
-        if (!File.Exists(templatePath)) throw new FileNotFoundException("Не найден шаблон gameinfo.", templatePath);
-
         var builtInProfile = Get(profile.Id);
         var path = GetPath(builtInProfile.Id);
         var parent = Path.GetDirectoryName(path)!;
@@ -68,11 +75,10 @@ public sealed class ProfileCatalogService
         string? backup = null;
         try
         {
-            var template = await File.ReadAllTextAsync(templatePath, ct);
-            if (!template.Contains("{GAME_ROOT}", StringComparison.Ordinal))
-                throw new InvalidDataException("Шаблон gameinfo не содержит обязательную подстановку {GAME_ROOT}.");
+            var gameInfo = (await gameInfoFactory(ct)).Replace("__PROFILE__", path.Replace("\\", "/"), StringComparison.Ordinal);
             var normalizedRoot = Path.GetFullPath(gameRoot).Replace("\\", "/");
-            var gameInfo = template.Replace("{GAME_ROOT}", normalizedRoot, StringComparison.Ordinal);
+            if (gameInfo.Contains("{GAME_ROOT}", StringComparison.Ordinal))
+                gameInfo = gameInfo.Replace("{GAME_ROOT}", normalizedRoot, StringComparison.Ordinal);
             if (gameInfo.Contains("{GAME_ROOT}", StringComparison.Ordinal))
                 throw new InvalidDataException("В gameinfo.txt осталась неподставленная переменная {GAME_ROOT}.");
             var profileJson = JsonSerializer.Serialize(builtInProfile, new JsonSerializerOptions { WriteIndented = true });
@@ -176,7 +182,15 @@ public sealed class ProfileCatalogService
     }
 
     public Task<string> ResetToFactoryAsync(string gameRoot, string id, string templatePath, CancellationToken ct = default) =>
-        PrepareCoreAsync(gameRoot, Get(id), templatePath, preserveExistingData: false, reuseIfCurrent: false, ct);
+        PrepareCoreAsync(gameRoot, Get(id), async token =>
+        {
+            if (!File.Exists(templatePath)) throw new FileNotFoundException("Не найден шаблон gameinfo.", templatePath);
+            return await File.ReadAllTextAsync(templatePath, token);
+        }, preserveExistingData: false, reuseIfCurrent: false, ct);
+
+    public Task<string> ResetToFactoryFromGameInfoAsync(string gameRoot, string id, CancellationToken ct = default) =>
+        PrepareCoreAsync(gameRoot, Get(id), token => ReadOfficialGameInfoAsync(gameRoot, token),
+            preserveExistingData: false, reuseIfCurrent: false, ct: ct);
 
     public async Task ResetAllToFactoryAsync(string? gameRoot, string templatePath, CancellationToken ct = default)
     {
@@ -198,6 +212,15 @@ public sealed class ProfileCatalogService
             EnsureNoReparsePoints(Path.GetDirectoryName(backup)!);
             await MoveDirectoryWithRetriesAsync(current, backup, ct);
             PruneBackups(profile.Id);
+        }
+    }
+
+    public async Task ResetAllToFactoryFromGameInfoAsync(string gameRoot, CancellationToken ct = default)
+    {
+        foreach (var profile in BuiltInProfiles)
+        {
+            ct.ThrowIfCancellationRequested();
+            await ResetToFactoryFromGameInfoAsync(gameRoot, profile.Id, ct);
         }
     }
 
@@ -223,16 +246,66 @@ public sealed class ProfileCatalogService
         if (searchPaths.Length == 0) return new[] { "В gameinfo.txt не найден блок SearchPaths." };
         foreach (var entry in searchPaths)
         {
-            var profilePathPrefix = Path.GetFullPath(profilePath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
-            var expanded = entry.Replace("|gameinfo_path|", profilePathPrefix, StringComparison.OrdinalIgnoreCase)
+            var expanded = entry.Replace("|gameinfo_path|", Path.Combine(Path.GetFullPath(gameRoot), "cstrike") + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
+                .Replace("|all_source_engine_paths|", Path.GetFullPath(gameRoot).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
                 .Replace("{GAME_ROOT}", Path.GetFullPath(gameRoot), StringComparison.OrdinalIgnoreCase)
                 .Replace('/', Path.DirectorySeparatorChar);
             var wildcard = expanded.IndexOf('*');
             if (wildcard >= 0) expanded = expanded[..wildcard].TrimEnd(Path.DirectorySeparatorChar);
             var full = Path.GetFullPath(expanded);
-            if (!File.Exists(full) && !Directory.Exists(full)) errors.Add($"Не найден SearchPath: {entry}");
+            if (entry.Contains("cstrike/download", StringComparison.OrdinalIgnoreCase) && !Directory.Exists(full)) continue;
+            if (!SearchPathExists(full)) errors.Add($"Не найден SearchPath: {entry}");
         }
         return errors;
+    }
+
+    private static bool SearchPathExists(string fullPath)
+    {
+        if (File.Exists(fullPath) || Directory.Exists(fullPath)) return true;
+        if (!fullPath.EndsWith(".vpk", StringComparison.OrdinalIgnoreCase)) return false;
+        var directoryVariant = Path.Combine(Path.GetDirectoryName(fullPath)!, Path.GetFileNameWithoutExtension(fullPath) + "_dir.vpk");
+        return File.Exists(directoryVariant);
+    }
+
+    private static async Task<string> ReadOfficialGameInfoAsync(string gameRoot, CancellationToken ct)
+    {
+        var sourcePath = Path.Combine(gameRoot, "cstrike", "gameinfo.txt");
+        if (!File.Exists(sourcePath))
+            throw new FileNotFoundException("Не найден официальный cstrike\\gameinfo.txt. Профиль не создан, запуск отменён.", sourcePath);
+
+        var source = await File.ReadAllTextAsync(sourcePath, ct);
+        var filesystemMatch = FileSystemBlock.Match(source);
+        if (!filesystemMatch.Success)
+            throw new InvalidDataException("В официальном cstrike\\gameinfo.txt отсутствует блок FileSystem. Профиль не создан.");
+        var filesystemBody = ExtractBalancedBlock(source, filesystemMatch.Index + filesystemMatch.Length - 1)
+            ?? throw new InvalidDataException("Блок FileSystem в официальном cstrike\\gameinfo.txt не закрыт.");
+        var searchPathsMatch = SearchPathsBlock.Match(filesystemBody);
+        var searchPathsBody = searchPathsMatch.Success
+            ? ExtractBalancedBlock(filesystemBody, searchPathsMatch.Index + searchPathsMatch.Length - 1)
+            : null;
+        if (searchPathsBody is null)
+            throw new InvalidDataException("В официальном cstrike\\gameinfo.txt отсутствует блок SearchPaths. Профиль не создан.");
+
+        var gameRootPath = Path.GetFullPath(gameRoot).Replace("\\", "/").TrimEnd('/');
+        var cstrikePath = gameRootPath + "/cstrike";
+        var lines = new List<string> { "            game+mod+custom_mod   \"__PROFILE__/custom/*\"" };
+        foreach (Match match in SearchPathLine.Matches(searchPathsBody))
+        {
+            var line = match.Value.Trim();
+            if (line.Contains("custom/*", StringComparison.OrdinalIgnoreCase) ||
+                line.Contains("default_write_path", StringComparison.OrdinalIgnoreCase) ||
+                line.Contains("mod_write", StringComparison.OrdinalIgnoreCase)) continue;
+            var sourcePathValue = match.Groups[1].Success ? match.Groups[1].Value : match.Groups[2].Value;
+            var resolvedPath = sourcePathValue
+                .Replace("|gameinfo_path|", cstrikePath, StringComparison.OrdinalIgnoreCase)
+                .Replace("|all_source_engine_paths|", gameRootPath + "/", StringComparison.OrdinalIgnoreCase);
+            var rendered = line.Replace(sourcePathValue, resolvedPath, StringComparison.Ordinal);
+            if (!match.Groups[1].Success && resolvedPath.Contains(' '))
+                rendered = rendered.Replace(resolvedPath, $"\"{resolvedPath}\"", StringComparison.Ordinal);
+            lines.Add("            " + rendered);
+        }
+        lines.Add("            mod+mod_write+default_write_path  \"__PROFILE__\"");
+        return "\"GameInfo\"\n{\n    game \"CS:S Launcher Profile\"\n    title \"\"\n    type multiplayer_only\n\n    FileSystem\n    {\n        SteamAppId 240\n        SearchPaths\n        {\n" + string.Join(Environment.NewLine, lines) + "\n        }\n    }\n}\n";
     }
 
     private static string? ExtractBalancedBlock(string text, int openingBrace)

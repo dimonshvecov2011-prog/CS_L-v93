@@ -98,7 +98,11 @@ cstrike.exe -steam -game "%AppData%\CssLauncher\profiles\classic" -novid -consol
 hl2.exe -steam -game "%AppData%\CssLauncher\profiles\classic" -novid -console
 ```
 
-Если потребуется изменить порядок или `custom/*`, изменяйте только `templates/gameinfo.template.txt`, а не код.
+При запуске CS:L читает официальный `<GAME_ROOT>\cstrike\gameinfo.txt` и переносит его `SearchPaths` в профиль с абсолютными путями. Макросы `|gameinfo_path|` и `|all_source_engine_paths|` разрешаются относительно реальной установки Steam; жёсткий шаблон не используется для игрового запуска. Если официальный файл не читается, запуск блокируется.
+
+## Smoke-проверка запуска
+
+Перед выпуском новой версии на реальной Windows-установке обязательно проверьте: после запуска через профиль открывается главное меню без `Can't find background image` и других ошибок; команда `path` в консоли показывает `cstrike`, `hl2`, `platform` и VPK-архивы; тестовая карта загружается с текстурами, моделями и звуками. Пока эта проверка не пройдена, версию нельзя выпускать публично.
 
 ## Обновление игры
 
