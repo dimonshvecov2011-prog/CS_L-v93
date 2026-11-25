@@ -92,7 +92,7 @@ public sealed class ProfileCatalogService
             if (preserveExistingData && Directory.Exists(path)) CopyPreservedProfileContents(path, staging, ct);
             await WriteAtomicallyAsync(Path.Combine(staging, "gameinfo.txt"), gameInfo, ct);
             await WriteAtomicallyAsync(Path.Combine(staging, "profile.json"), profileJson, ct);
-            var validation = ValidateProfile(staging, gameRoot);
+            var validation = ValidateProfile(staging, gameRoot, path);
             if (validation.Count > 0)
                 throw new InvalidDataException("Сгенерированный профиль не прошёл проверку SearchPaths:\n" + string.Join("\n", validation));
 
@@ -224,7 +224,7 @@ public sealed class ProfileCatalogService
         }
     }
 
-    public IReadOnlyList<string> ValidateProfile(string profilePath, string gameRoot)
+    public IReadOnlyList<string> ValidateProfile(string profilePath, string gameRoot, string? expectedProfilePath = null)
     {
         EnsureNoReparsePointsRecursive(profilePath);
         var errors = new List<string>();
@@ -254,7 +254,7 @@ public sealed class ProfileCatalogService
             if (wildcard >= 0) expanded = expanded[..wildcard].TrimEnd(Path.DirectorySeparatorChar);
             var full = Path.GetFullPath(expanded);
             if (entry.Contains("cstrike/download", StringComparison.OrdinalIgnoreCase) && !Directory.Exists(full)) continue;
-            var profileEquivalent = TryMapToProfilePath(full, profilePath);
+            var profileEquivalent = TryMapToProfilePath(full, expectedProfilePath ?? profilePath);
             if (!SearchPathExists(full) && (profileEquivalent is null || !SearchPathExists(profileEquivalent)))
                 errors.Add($"Не найден SearchPath: {entry}");
         }
