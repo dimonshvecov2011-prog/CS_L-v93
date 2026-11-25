@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "csl-hud",
+  "version": "0.4.0-dev",
+  "engine": "css-steam",
+  "architecture": "x86",
+  "mode": "replace",
+  "zOrder": 1000,
+  "disableValveHud": true,
+  "fallback": "overlay",
+  "enabled": false,
+  "requiredGameVersions": ["11003710"],
+  "runtime": {
+    "entryPoint": "bin/csl_hud.dll",
+    "abi": 1
+  },
+  "files": [
+    "bin/csl_hud.dll",
+    "cfg/hud.json",
+    "materials/vgui/csl_hud.vmt",
+    "resource/ui/csl_hud.res"
+  ]
+}
