@@ -160,10 +160,11 @@ public class CoreTests
         {
             var service = new JsonSettingsService(temp);
             var settings = new LauncherSettings("D:/Games/CSS", new LaunchOptions(
-                Novid: false, Console: true, Windowed: true, Noborder: true, Extra: "-freq 144", Steam: true, Executable: "hl2.exe"), true)
+                Novid: false, Console: true, Windowed: true, Noborder: true, Extra: "-freq 144", Steam: true, Executable: "hl2.exe", Insecure: true), true)
             {
                 SchemaVersion = 1,
-                Executable = "hl2.exe"
+                Executable = "hl2.exe",
+                HudEnabled = true
             };
             await service.SaveAsync(settings);
             var loaded = await service.LoadAsync();
@@ -172,6 +173,8 @@ public class CoreTests
             Assert.Equal("hl2.exe", loaded.Executable);
             Assert.False(loaded.EffectiveLaunchOptions.Novid);
             Assert.True(loaded.EffectiveLaunchOptions.Windowed);
+            Assert.True(loaded.EffectiveLaunchOptions.Insecure);
+            Assert.True(loaded.HudEnabled);
             Assert.True(loaded.DiagnosticMode);
             Assert.Empty(Directory.GetFiles(Path.Combine(temp, "CssLauncher"), "settings.json.tmp-*"));
         }

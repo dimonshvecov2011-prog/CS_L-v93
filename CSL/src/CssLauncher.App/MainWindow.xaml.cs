@@ -14,7 +14,7 @@ namespace CssLauncher.App;
 
 public partial class MainWindow : Window
 {
-    private const string CurrentVersion = "0.3.6-rc2";
+    private const string CurrentVersion = "0.4.0-dev";
     private readonly FileLogger _logger = new();
     private readonly JsonSettingsService _settings = new();
     private readonly string _root = AppContext.BaseDirectory;
@@ -30,6 +30,7 @@ public partial class MainWindow : Window
     private string _gamePath = "";
     private string _selectedExecutable = "";
     private string _savedExecutable = "";
+    private bool _hudEnabled;
     private bool _syncingExecutable;
     private bool _closing;
     private bool _closeApproved;
@@ -185,6 +186,9 @@ public partial class MainWindow : Window
             : settings.EffectiveLaunchOptions.Executable;
         DiagnosticBox.IsChecked = settings.DiagnosticMode;
         SteamBox.IsChecked = settings.EffectiveLaunchOptions.Steam;
+        _hudEnabled = settings.HudEnabled;
+        HudBox.IsChecked = _hudEnabled;
+        UpdateHudSafetyNotice();
 
         await RefreshRecoveryListsAsync();
         if (settings.LaunchOptions is not null)
@@ -197,6 +201,10 @@ public partial class MainWindow : Window
         if (_safeMode)
         {
             _check = null;
+            HudBox.IsEnabled = false;
+            HudBox.IsChecked = false;
+            _hudEnabled = false;
+            UpdateHudSafetyNotice();
             StatusText.Text = "Безопасный режим восстановления";
             SideStatusText.Text = "Безопасный режим";
             UpdateExecutableOptions("");
@@ -227,7 +235,8 @@ public partial class MainWindow : Window
             BuildOptions(),
             DiagnosticBox.IsChecked == true)
         {
-            Executable = string.IsNullOrWhiteSpace(_selectedExecutable) ? _savedExecutable : Path.GetFileName(_selectedExecutable)
+            Executable = string.IsNullOrWhiteSpace(_selectedExecutable) ? _savedExecutable : Path.GetFileName(_selectedExecutable),
+            HudEnabled = _hudEnabled
         };
         return _settings.SaveAsync(settings);
     }
@@ -542,11 +551,26 @@ public partial class MainWindow : Window
         if (DiagnosticBox.IsChecked == true) _logger.Warning("Диагностический режим включён.");
     }
 
+    private void HudChanged(object sender, RoutedEventArgs e)
+    {
+        _hudEnabled = HudBox.IsChecked == true;
+        UpdateHudSafetyNotice();
+        UpdatePlayState();
+    }
+
+    private void UpdateHudSafetyNotice()
+    {
+        HudSafetyNotice.Visibility = _hudEnabled ? Visibility.Visible : Visibility.Collapsed;
+        if (_hudEnabled)
+            HintText.Text = "CS:L HUD включён: запуск только без VAC (-insecure). Подключение к VAC-серверам запрещено.";
+    }
+
     private LaunchOptions BuildOptions() => new(
         Novid: NovidBox.IsChecked == true,
         Console: ConsoleBox.IsChecked == true,
         Steam: SteamBox.IsChecked == true,
-        Executable: string.IsNullOrWhiteSpace(_selectedExecutable) ? "" : Path.GetFileName(_selectedExecutable));
+        Executable: string.IsNullOrWhiteSpace(_selectedExecutable) ? "" : Path.GetFileName(_selectedExecutable),
+        Insecure: _hudEnabled);
 
     private async void Play_Click(object sender, RoutedEventArgs e)
     {

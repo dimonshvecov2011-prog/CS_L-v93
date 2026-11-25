@@ -51,6 +51,7 @@ public sealed class GameLauncher : IGameLauncher
 
         var psi = new ProcessStartInfo(exe) { WorkingDirectory = normalizedRoot, UseShellExecute = false };
         if (options.Steam) psi.ArgumentList.Add("-steam");
+        if (options.Insecure) psi.ArgumentList.Add("-insecure");
         if (options.Novid) psi.ArgumentList.Add("-novid");
         if (options.Console) psi.ArgumentList.Add("-console");
         if (options.Windowed) psi.ArgumentList.Add("-windowed");
