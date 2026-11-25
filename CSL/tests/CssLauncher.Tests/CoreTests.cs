@@ -286,7 +286,7 @@ public class CoreTests
             var service = new ProfileCatalogService(app);
             var error = await Assert.ThrowsAsync<FileNotFoundException>(() =>
                 service.PrepareFromGameInfoAsync(game, service.Get("classic")));
-            Assert.True(error.Message.Contains("official cstrike", StringComparison.OrdinalIgnoreCase));
+            Assert.True(error.FileName is not null && error.FileName.Contains(Path.Combine("cstrike", "gameinfo.txt"), StringComparison.OrdinalIgnoreCase));
             Assert.False(Directory.Exists(service.GetPath("classic")));
         }
         finally { DeleteDirectory(app); DeleteDirectory(game); }

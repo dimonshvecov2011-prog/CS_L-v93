@@ -254,7 +254,9 @@ public sealed class ProfileCatalogService
             if (wildcard >= 0) expanded = expanded[..wildcard].TrimEnd(Path.DirectorySeparatorChar);
             var full = Path.GetFullPath(expanded);
             if (entry.Contains("cstrike/download", StringComparison.OrdinalIgnoreCase) && !Directory.Exists(full)) continue;
-            if (!SearchPathExists(full)) errors.Add($"Не найден SearchPath: {entry}");
+            var profileEquivalent = TryMapToProfilePath(full, profilePath);
+            if (!SearchPathExists(full) && (profileEquivalent is null || !SearchPathExists(profileEquivalent)))
+                errors.Add($"Не найден SearchPath: {entry}");
         }
         return errors;
     }
@@ -265,6 +267,17 @@ public sealed class ProfileCatalogService
         if (!fullPath.EndsWith(".vpk", StringComparison.OrdinalIgnoreCase)) return false;
         var directoryVariant = Path.Combine(Path.GetDirectoryName(fullPath)!, Path.GetFileNameWithoutExtension(fullPath) + "_dir.vpk");
         return File.Exists(directoryVariant);
+    }
+
+    private static string? TryMapToProfilePath(string fullPath, string profilePath)
+    {
+        var expectedRoot = Path.GetFullPath(profilePath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var normalized = Path.GetFullPath(fullPath);
+        if (normalized.Equals(expectedRoot, StringComparison.OrdinalIgnoreCase)) return expectedRoot;
+        var prefix = expectedRoot + Path.DirectorySeparatorChar;
+        return normalized.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+            ? Path.Combine(profilePath, normalized[prefix.Length..])
+            : null;
     }
 
     private static async Task<string> ReadOfficialGameInfoAsync(string gameRoot, CancellationToken ct)
