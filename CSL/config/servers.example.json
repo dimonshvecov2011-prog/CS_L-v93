@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "updatedAt": "2026-11-24T00:00:00Z",
   "servers": [
-    { "name": "CS:L Community #1", "address": "127.0.0.1", "port": 27015, "map": "de_dust2", "players": 0, "maxPlayers": 32, "mode": "Classic", "region": "EU" },
-    { "name": "CS:L Competitive", "address": "127.0.0.1", "port": 27016, "map": "de_mirage", "players": 0, "maxPlayers": 10, "mode": "Competitive", "region": "EU" }
+    { "name": "CS:L Community #1", "address": "127.0.0.1", "port": 27015, "map": "de_dust2", "players": 0, "maxPlayers": 32, "mode": "Classic", "region": "EU", "vac": false },
+    { "name": "CS:L Competitive", "address": "127.0.0.1", "port": 27016, "map": "de_mirage", "players": 0, "maxPlayers": 10, "mode": "Competitive", "region": "EU", "vac": false }
   ]
 }

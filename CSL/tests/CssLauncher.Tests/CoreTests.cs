@@ -824,6 +824,84 @@ public class CoreTests
     }
 
     [Fact]
+    public async Task HudInstallUpdatesOnlyOwnedDirectoryAndPreservesOtherCustomFiles()
+    {
+        var temp = TempDirectory("CssHudInstall");
+        try
+        {
+            var game = await CreateGameRoot(temp, "test");
+            var custom = Path.Combine(game, "cstrike", "custom");
+            Directory.CreateDirectory(custom);
+            await File.WriteAllTextAsync(Path.Combine(custom, "other-addon.txt"), "keep");
+            var package = await CreateHudPackage(temp);
+            var service = new HudFileService(package, ["test"]);
+
+            var result = service.InstallOrUpdate(game);
+
+            Assert.Equal(HudInstallState.Installed, result.State);
+            Assert.Equal("keep", await File.ReadAllTextAsync(Path.Combine(custom, "other-addon.txt")));
+            Assert.Equal(HudInstallState.Installed, service.Inspect(game).State);
+        }
+        finally { DeleteDirectory(temp); }
+    }
+
+    [Fact]
+    public async Task HudRemoveDeletesOnlyOwnedDirectory()
+    {
+        var temp = TempDirectory("CssHudRemove");
+        try
+        {
+            var game = await CreateGameRoot(temp, "test");
+            var custom = Path.Combine(game, "cstrike", "custom");
+            Directory.CreateDirectory(Path.Combine(custom, "csl_hud"));
+            await File.WriteAllTextAsync(Path.Combine(custom, "other-addon.txt"), "keep");
+            var service = new HudFileService(await CreateHudPackage(temp), ["test"]);
+
+            service.Remove(game);
+
+            Assert.False(Directory.Exists(Path.Combine(custom, "csl_hud")));
+            Assert.Equal("keep", await File.ReadAllTextAsync(Path.Combine(custom, "other-addon.txt")));
+        }
+        finally { DeleteDirectory(temp); }
+    }
+
+    [Fact]
+    public async Task HudInstallRollsBackWhenPackageCopyFails()
+    {
+        var temp = TempDirectory("CssHudRollback");
+        try
+        {
+            var game = await CreateGameRoot(temp, "test");
+            var target = Path.Combine(game, "cstrike", "custom", "csl_hud");
+            Directory.CreateDirectory(target);
+            await File.WriteAllTextAsync(Path.Combine(target, "old.res"), "previous");
+            var package = await CreateHudPackage(temp);
+            var service = new HudFileService(package, ["test"]);
+            File.Delete(Path.Combine(package, "resource", "csl_hud_colors.res"));
+
+            await Assert.ThrowsAsync<FileNotFoundException>(() => Task.Run(() => service.InstallOrUpdate(game)));
+
+            Assert.Equal("previous", await File.ReadAllTextAsync(Path.Combine(target, "old.res")));
+        }
+        finally { DeleteDirectory(temp); }
+    }
+
+    [Fact]
+    public void HudManifestRejectsTraversalPath()
+    {
+        var temp = TempDirectory("CssHudTraversal");
+        try
+        {
+            var package = Path.Combine(temp, "package");
+            Directory.CreateDirectory(package);
+            File.WriteAllText(Path.Combine(package, "hud-package.json"),
+                "{\"schemaVersion\":1,\"files\":[{\"path\":\"../escape.res\",\"sha256\":\"" + new string('A', 64) + "\"}]}" );
+            Assert.Throws<InvalidDataException>(() => new HudFileService(package, ["test"]));
+        }
+        finally { DeleteDirectory(temp); }
+    }
+
+    [Fact]
     public async Task GameLauncherRejectsExecutablePathOutsideGameRoot()
     {
         var temp = TempDirectory("CssLaunchPathSafety");
@@ -968,6 +1046,30 @@ public class CoreTests
         var bytes = await File.ReadAllBytesAsync(packagePath);
         return new LauncherUpdateManifest(1, "0.3.5", "https://fake-channel.invalid/CSL.zip",
             Convert.ToHexString(SHA256.HashData(bytes)), bytes.LongLength);
+    }
+
+    private static async Task<string> CreateHudPackage(string temp)
+    {
+        var package = Path.Combine(temp, "hud-package");
+        Directory.CreateDirectory(Path.Combine(package, "scripts"));
+        Directory.CreateDirectory(Path.Combine(package, "resource"));
+        var files = new[] { ("scripts/hudlayout.res", "layout"), ("resource/csl_hud_colors.res", "colors") };
+        foreach (var (relative, content) in files)
+        {
+            var path = Path.Combine(package, relative.Replace('/', Path.DirectorySeparatorChar));
+            await File.WriteAllTextAsync(path, content);
+        }
+        var manifest = new
+        {
+            schemaVersion = 1,
+            files = files.Select(item => new
+            {
+                path = item.Item1,
+                sha256 = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(Path.Combine(package, item.Item1.Replace('/', Path.DirectorySeparatorChar)))))
+            })
+        };
+        await File.WriteAllTextAsync(Path.Combine(package, "hud-package.json"), JsonSerializer.Serialize(manifest));
+        return package;
     }
 
     private static string TempDirectory(string prefix)
