@@ -322,7 +322,7 @@ public sealed class ProfileCatalogService
             var resolvedPath = sourcePathValue
                 .Replace("|gameinfo_path|", cstrikePath + "/", StringComparison.OrdinalIgnoreCase)
                 .Replace("|all_source_engine_paths|", gameRootPath + "/", StringComparison.OrdinalIgnoreCase);
-            if (!resolvedPath.StartsWith('/', StringComparison.Ordinal) &&
+            if (!resolvedPath.StartsWith("/", StringComparison.Ordinal) &&
                 !Regex.IsMatch(resolvedPath, @"^[A-Za-z]:[\\/]", RegexOptions.CultureInvariant))
                 resolvedPath = gameRootPath + "/" + resolvedPath.TrimStart('/');
             var rendered = line.Replace(sourcePathValue, resolvedPath, StringComparison.Ordinal);
