@@ -15,7 +15,7 @@ on:
       - '.github/workflows/build-csl.yml'
 
 permissions:
-  contents: write
+  contents: read
 
 env:
   DOTNET_NOLOGO: true
@@ -25,9 +25,38 @@ env:
 jobs:
   build-windows:
     runs-on: windows-latest
+    permissions:
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Validate CS:L version declarations
+        shell: pwsh
+        run: |
+          [xml]$project = Get-Content ".\CSL\src\CssLauncher.App\CssLauncher.App.csproj" -Raw
+          $projectVersion = $project.SelectSingleNode('/Project/PropertyGroup/Version').InnerText
+          $windowText = Get-Content ".\CSL\src\CssLauncher.App\MainWindow.xaml.cs" -Raw
+          $windowMatch = [regex]::Match($windowText, 'CurrentVersion\s*=\s*"([^"]+)"')
+          if (-not $windowMatch.Success) { throw "Не удалось прочитать версию из MainWindow.xaml.cs." }
+          $windowVersion = $windowMatch.Groups[1].Value
+          $xamlText = Get-Content ".\CSL\src\CssLauncher.App\MainWindow.xaml" -Raw
+          $xamlTitleMatch = [regex]::Match($xamlText, 'Title="CS:L ([^"]+)"')
+          $xamlSidebarMatch = [regex]::Match($xamlText, 'Text="CS:L v([^"]+)"')
+          $setupText = Get-Content ".\CSL\installer\CSL-Setup.iss" -Raw
+          $setupMatch = [regex]::Match($setupText, '#define MyAppVersion "([^"]+)"')
+          $feed = Get-Content ".\CSL\config\launcher-update.json" -Raw | ConvertFrom-Json
+          if (-not $setupMatch.Success) { throw "Не удалось прочитать версию Inno Setup." }
+          $setupVersion = $setupMatch.Groups[1].Value
+          if (-not $xamlTitleMatch.Success -or -not $xamlSidebarMatch.Success -or
+              $projectVersion -ne $windowVersion -or $projectVersion -ne $setupVersion -or
+              $projectVersion -ne $xamlTitleMatch.Groups[1].Value -or
+              $projectVersion -ne $xamlSidebarMatch.Groups[1].Value -or $feed.version -ne $projectVersion) {
+            throw "Несогласованные версии csproj/MainWindow/XAML/installer/feed: $projectVersion / $windowVersion / $($xamlTitleMatch.Groups[1].Value) / $($xamlSidebarMatch.Groups[1].Value) / $setupVersion / $($feed.version)."
+          }
+          if ([string]::IsNullOrWhiteSpace($feed.downloadUrl) -and (-not [string]::IsNullOrWhiteSpace($feed.sha256) -or $feed.size -ne 0)) {
+            throw "Отключённый update feed должен иметь пустой SHA-256 и нулевой размер."
+          }
 
       - name: Validate release tag version
         if: startsWith(github.ref, 'refs/tags/')
@@ -97,9 +126,21 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+  publish-release:
+    if: startsWith(github.ref, 'refs/tags/csl-v') || startsWith(github.ref, 'refs/tags/v')
+    needs: build-windows
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download installer artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: CSL-Windows-Installer
+          path: dist
+
       - name: Create GitHub release for CS:L tag
-        if: startsWith(github.ref, 'refs/tags/csl-v') || startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
-          files: CSL/artifacts/installer/*.exe
+          files: dist/*.exe

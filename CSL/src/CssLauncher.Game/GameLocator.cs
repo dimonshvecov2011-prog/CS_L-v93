@@ -7,11 +7,13 @@ public sealed class GameLocator : IGameLocator
 {
     private readonly string? _savedPath;
     private readonly IReadOnlyList<string>? _steamRoots;
+    private readonly Action<Exception>? _logError;
 
-    public GameLocator(string? savedPath = null, IEnumerable<string>? steamRoots = null)
+    public GameLocator(string? savedPath = null, IEnumerable<string>? steamRoots = null, Action<Exception>? logError = null)
     {
         _savedPath = savedPath;
         _steamRoots = steamRoots?.ToArray();
+        _logError = logError;
     }
 
     public async Task<IReadOnlyList<GameCandidate>> FindCandidatesAsync(CancellationToken ct)
@@ -19,7 +21,7 @@ public sealed class GameLocator : IGameLocator
         var result = new List<GameCandidate>();
         AddIfValid(result, _savedPath, "Settings");
 
-        foreach (var steam in _steamRoots ?? ReadSteamRoots())
+        foreach (var steam in _steamRoots ?? ReadSteamRoots(_logError))
         {
             ct.ThrowIfCancellationRequested();
             AddLibrary(result, steam, "Registry");
@@ -36,8 +38,11 @@ public sealed class GameLocator : IGameLocator
                     AddLibrary(result, library, "Library");
                 }
             }
-            catch (IOException) { }
-            catch (UnauthorizedAccessException) { }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                _logError?.Invoke(ex);
+            }
         }
 
         return result;
@@ -58,7 +63,7 @@ public sealed class GameLocator : IGameLocator
             result.Add(new GameCandidate(path, source));
     }
 
-    private static IReadOnlyList<string> ReadSteamRoots()
+    private static IReadOnlyList<string> ReadSteamRoots(Action<Exception>? logError)
     {
         var result = new List<string>();
         if (!OperatingSystem.IsWindows()) return result;
@@ -84,7 +89,10 @@ public sealed class GameLocator : IGameLocator
                         result.Add(path);
                 }
             }
-            catch (Exception) { }
+            catch (Exception ex)
+            {
+                logError?.Invoke(ex);
+            }
         }
 #pragma warning restore CA1416
 

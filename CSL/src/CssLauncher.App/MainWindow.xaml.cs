@@ -14,11 +14,14 @@ namespace CssLauncher.App;
 
 public partial class MainWindow : Window
 {
-    private const string CurrentVersion = "0.3.3";
+    private const string CurrentVersion = "0.3.5";
     private readonly FileLogger _logger = new();
     private readonly JsonSettingsService _settings = new();
     private readonly string _root = AppContext.BaseDirectory;
     private readonly ProfileCatalogService _profiles = new();
+    private readonly bool _safeMode;
+    private readonly bool _previousRunWasUnclean;
+    private readonly CrashRecoveryMarker _recoveryMarker;
     private readonly ServerListService _servers = new();
     private readonly LauncherUpdateService _updates = new();
     private readonly DiagnosticArchiveService _diagnostics = new();
@@ -36,8 +39,11 @@ public partial class MainWindow : Window
     private bool _closeApproved;
     private bool _settingsLoadFailed;
 
-    public MainWindow()
+    public MainWindow(bool safeMode, bool previousRunWasUnclean, CrashRecoveryMarker recoveryMarker)
     {
+        _safeMode = safeMode;
+        _previousRunWasUnclean = previousRunWasUnclean;
+        _recoveryMarker = recoveryMarker;
         InitializeComponent();
         Title = $"CS:L {CurrentVersion}";
         LauncherVersionText.Text = $"CS:L v{CurrentVersion}";
@@ -46,7 +52,29 @@ public partial class MainWindow : Window
             HintText.Text = message.Length > 100 ? message[..100] : message));
         Loaded += async (_, _) =>
         {
-            try { await LoadAsync(); }
+            try
+            {
+                if (_safeMode)
+                {
+                    SafeModeNotice.Visibility = Visibility.Visible;
+                    PlayButton.IsEnabled = false;
+                    InstallButton.IsEnabled = false;
+                    ChooseFolderButton.IsEnabled = false;
+                    CheckUpdateButton.IsEnabled = false;
+                    StatusText.Text = "Безопасный режим восстановления";
+                    SideStatusText.Text = "Безопасный режим";
+                }
+                if (_previousRunWasUnclean)
+                {
+                    RecoveryNoticeText.Text = "Предыдущий запуск CS:L завершился некорректно. Проверьте копии настроек и профиля, создайте диагностический архив или пересоздайте профиль.";
+                    RecoveryNotice.Visibility = Visibility.Visible;
+                    var answer = WpfMessageBox.Show(
+                        "Предыдущий запуск CS:L завершился некорректно. Открыть вкладку восстановления? Там доступны копии настроек, откат профиля и диагностика.",
+                        "CS:L — восстановление после сбоя", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+                    if (answer == MessageBoxResult.Yes) MainTabs.SelectedItem = RecoveryTab;
+                }
+                await LoadAsync();
+            }
             catch (Exception ex)
             {
                 _logger.Error("Не удалось завершить инициализацию лаунчера.", ex);
@@ -121,9 +149,26 @@ public partial class MainWindow : Window
         catch (SettingsCorruptedException ex)
         {
             _logger.Warning($"Повреждённый settings.json перемещён в {ex.BackupPath}.");
-            WpfMessageBox.Show($"Файл настроек был повреждён и сохранён как резервная копия:\n{ex.BackupPath}\n\nБудут загружены настройки по умолчанию.",
-                "CS:L — восстановление настроек", MessageBoxButton.OK, MessageBoxImage.Warning);
-            settings = new LauncherSettings();
+            var latestBackup = ex.RecoverableBackups.FirstOrDefault();
+            if (latestBackup is not null && WpfMessageBox.Show(
+                    $"Файл настроек повреждён; его исходник сохранён здесь:\n{ex.BackupPath}\n\nВосстановить последнюю рабочую копию от {latestBackup.CreatedUtc:u}?",
+                    "CS:L — восстановление настроек", MessageBoxButton.YesNo, MessageBoxImage.Warning) == MessageBoxResult.Yes)
+            {
+                try { settings = await _settings.RestoreBackupAsync(latestBackup.Path); }
+                catch (Exception restoreError)
+                {
+                    _logger.Error("Не удалось восстановить последнюю копию настроек.", restoreError);
+                    WpfMessageBox.Show($"Не удалось восстановить копию. Используются значения по умолчанию.\n\n{restoreError.Message}",
+                        "CS:L — восстановление настроек", MessageBoxButton.OK, MessageBoxImage.Error);
+                    settings = new LauncherSettings();
+                }
+            }
+            else
+            {
+                WpfMessageBox.Show($"Файл настроек был повреждён и сохранён как резервная копия:\n{ex.BackupPath}\n\nИспользуются значения по умолчанию.",
+                    "CS:L — восстановление настроек", MessageBoxButton.OK, MessageBoxImage.Warning);
+                settings = new LauncherSettings();
+            }
         }
         catch (UnsupportedSettingsSchemaException ex)
         {
@@ -150,6 +195,7 @@ public partial class MainWindow : Window
 
         var profile = _profiles.Get(settings.ProfileId);
         SetActiveProfile(profile, applyProfileDefaults: settings.LaunchOptions is null);
+        await RefreshRecoveryListsAsync();
         if (settings.LaunchOptions is not null)
         {
             NovidBox.IsChecked = settings.EffectiveLaunchOptions.Novid;
@@ -157,6 +203,15 @@ public partial class MainWindow : Window
         }
 
         SetPathText(settings.GamePath);
+        if (_safeMode)
+        {
+            _check = null;
+            StatusText.Text = "Безопасный режим восстановления";
+            SideStatusText.Text = "Безопасный режим";
+            UpdateExecutableOptions("");
+            UpdatePlayState();
+            return;
+        }
         if (!string.IsNullOrWhiteSpace(settings.GamePath) && Directory.Exists(settings.GamePath) &&
             await CheckPathAsync(settings.GamePath))
             return;
@@ -187,8 +242,130 @@ public partial class MainWindow : Window
         return _settings.SaveAsync(settings);
     }
 
+    private async Task RefreshRecoveryListsAsync()
+    {
+        try
+        {
+            SettingsBackupsList.ItemsSource = await _settings.GetRecoverableBackupsAsync();
+            ProfileBackupsList.ItemsSource = _profiles.GetBackups(_activeProfile.Id);
+            RestoreSettingsButton.IsEnabled = SettingsBackupsList.Items.Count > 0;
+            RollbackProfileButton.IsEnabled = ProfileBackupsList.Items.Count > 0;
+        }
+        catch (Exception ex)
+        {
+            _logger.Error("Не удалось обновить список резервных копий.", ex);
+            HintText.Text = $"Не удалось прочитать список резервных копий: {ex.Message}";
+        }
+    }
+
+    private async void RestoreSettings_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (SettingsBackupsList.SelectedItem is not SettingsBackupInfo backup)
+            {
+                WpfMessageBox.Show("Сначала выберите копию настроек.", "CS:L — восстановление", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+            if (WpfMessageBox.Show($"Восстановить настройки из копии от {backup.CreatedUtc:u}? Текущий файл будет сохранён в резервную копию.",
+                    "CS:L — подтверждение восстановления", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
+            await _settings.RestoreBackupAsync(backup.Path);
+            _settingsLoadFailed = false;
+            _logger.Info($"Настройки восстановлены из {backup.Path}.");
+            WpfMessageBox.Show("Настройки восстановлены. Перезапустите CS:L, чтобы применить их полностью.",
+                "CS:L — восстановление", MessageBoxButton.OK, MessageBoxImage.Information);
+            await RefreshRecoveryListsAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.Error("Ошибка восстановления настроек.", ex);
+            WpfMessageBox.Show($"Не удалось восстановить настройки.\n\n{ex.Message}",
+                "CS:L — восстановление", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private async void RollbackProfile_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (ProfileBackupsList.SelectedItem is not ProfileBackupInfo backup)
+            {
+                WpfMessageBox.Show("Сначала выберите резервную копию профиля.", "CS:L — откат профиля", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+            if (WpfMessageBox.Show($"Откатить профиль «{_activeProfile.Name}» к копии от {backup.CreatedUtc:u}? Текущий профиль будет сохранён.",
+                    "CS:L — подтверждение отката", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
+            var path = await _profiles.RollbackAsync(_activeProfile.Id, backup.Path, _gamePath);
+            var errors = _profiles.ValidateProfile(path, _gamePath);
+            if (errors.Count > 0) throw new InvalidDataException("Откат выполнен, но профиль не прошёл проверку:\n" + string.Join("\n", errors));
+            _logger.Info($"Профиль {_activeProfile.Id} откатан к {backup.Path}.");
+            WpfMessageBox.Show("Профиль восстановлен и прошёл проверку.", "CS:L — откат профиля", MessageBoxButton.OK, MessageBoxImage.Information);
+            await RefreshRecoveryListsAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.Error("Ошибка отката профиля.", ex);
+            WpfMessageBox.Show($"Не удалось откатить профиль.\n\n{ex.Message}", "CS:L — откат профиля", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private async void ResetProfile_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(_gamePath) || !Directory.Exists(_gamePath))
+                throw new DirectoryNotFoundException("Для пересоздания профиля сначала укажите папку CS:S.");
+            if (WpfMessageBox.Show($"Пересоздать профиль «{_activeProfile.Name}» по заводскому шаблону? Текущая версия будет сохранена для отката.",
+                    "CS:L — сброс профиля", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
+            var path = await _profiles.ResetToFactoryAsync(_gamePath, _activeProfile.Id,
+                Path.Combine(_root, "templates", "gameinfo.template.txt"));
+            var errors = _profiles.ValidateProfile(path, _gamePath);
+            if (errors.Count > 0) throw new InvalidDataException("Созданный профиль не прошёл проверку:\n" + string.Join("\n", errors));
+            _logger.Info($"Профиль {_activeProfile.Id} сброшен к заводскому.");
+            WpfMessageBox.Show("Профиль пересоздан и прошёл проверку.", "CS:L — сброс профиля", MessageBoxButton.OK, MessageBoxImage.Information);
+            await RefreshRecoveryListsAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.Error("Ошибка сброса профиля.", ex);
+            WpfMessageBox.Show($"Не удалось пересоздать профиль.\n\n{ex.Message}", "CS:L — сброс профиля", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private async void ResetEverything_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (WpfMessageBox.Show("Выполнить factory reset CS:L? Настройки вернутся к значениям по умолчанию, а все созданные профили будут заменены или убраны в резервные копии. Игровые файлы не затрагиваются.",
+                    "CS:L — подтверждение factory reset", MessageBoxButton.YesNo, MessageBoxImage.Stop) != MessageBoxResult.Yes) return;
+            await _profiles.ResetAllToFactoryAsync(_gamePath, Path.Combine(_root, "templates", "gameinfo.template.txt"));
+            _settingsLoadFailed = false;
+            SetPathText("");
+            _savedExecutable = "";
+            _selectedExecutable = "";
+            _check = null;
+            DiagnosticBox.IsChecked = false;
+            SteamBox.IsChecked = true;
+            SetActiveProfile(ProfileCatalogService.BuiltInProfiles[0], applyProfileDefaults: true);
+            UpdateExecutableOptions("");
+            UpdatePlayState();
+            await _settings.SaveAsync(new LauncherSettings());
+            _logger.Warning("Выполнен подтверждённый factory reset CS:L.");
+            WpfMessageBox.Show("Локальные настройки и профили сброшены. Резервные копии сохранены; игровые файлы не изменялись.",
+                "CS:L — factory reset", MessageBoxButton.OK, MessageBoxImage.Information);
+            await RefreshRecoveryListsAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.Error("Ошибка factory reset.", ex);
+            WpfMessageBox.Show($"Не удалось завершить factory reset. Проверьте состояние резервных копий.\n\n{ex.Message}",
+                "CS:L — factory reset", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
     private async Task AutoDetectAsync()
     {
+        if (_safeMode) return;
         StatusText.Text = "Ищем CS:S в библиотеках Steam...";
         BuildText.Text = "ClientVersion: —   •   Steam buildid: —";
         SideStatusText.Text = "Поиск в Steam";
@@ -207,7 +384,8 @@ public partial class MainWindow : Window
 
     private async Task<bool> FindInstalledGameAsync(CancellationToken ct)
     {
-        var candidates = await new GameLocator(_gamePath).FindCandidatesAsync(ct);
+        var candidates = await new GameLocator(_gamePath, logError: ex => _logger.Error("Ошибка чтения Steam-библиотеки или реестра.", ex))
+            .FindCandidatesAsync(ct);
         foreach (var candidate in candidates)
         {
             ct.ThrowIfCancellationRequested();
@@ -325,11 +503,19 @@ public partial class MainWindow : Window
 
     private async void ChooseFolder_Click(object sender, RoutedEventArgs e)
     {
-        using var dialog = new Forms.FolderBrowserDialog { Description = "Выберите папку Counter-Strike Source" };
-        if (dialog.ShowDialog() == Forms.DialogResult.OK)
+        try
         {
-            RetryInstallButton.Visibility = Visibility.Collapsed;
-            await CheckPathAsync(dialog.SelectedPath);
+            using var dialog = new Forms.FolderBrowserDialog { Description = "Выберите папку Counter-Strike Source" };
+            if (dialog.ShowDialog() == Forms.DialogResult.OK)
+            {
+                RetryInstallButton.Visibility = Visibility.Collapsed;
+                await CheckPathAsync(dialog.SelectedPath);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.Error("Не удалось выбрать папку игры.", ex);
+            WpfMessageBox.Show($"Не удалось проверить выбранную папку.\n\n{ex.Message}", "CS:L — выбор игры", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 
@@ -435,6 +621,7 @@ public partial class MainWindow : Window
             NovidBox.IsChecked = _activeProfile.Novid;
             ConsoleBox.IsChecked = _activeProfile.Console;
         }
+        _ = RefreshRecoveryListsAsync();
         UpdatePlayState();
     }
 
@@ -473,20 +660,47 @@ public partial class MainWindow : Window
         UpdatePlayState();
         try
         {
-            if (_check is null || !(_check.Status == VersionStatus.Confirmed ||
-                (_check.Status == VersionStatus.UnknownBuild && DiagnosticBox.IsChecked == true)))
+            var previousCheck = _check;
+            if (string.IsNullOrWhiteSpace(_gamePath) || !await CheckPathAsync(_gamePath) || _check is null)
                 return;
 
-            if (HashMismatchPrompt.IsRequired(_check))
+            var currentCheck = _check;
+            if (currentCheck.Status != VersionStatus.Confirmed &&
+                !(currentCheck.Status == VersionStatus.UnknownBuild && DiagnosticBox.IsChecked == true)) return;
+
+            var changed = previousCheck is null || previousCheck.Status != currentCheck.Status ||
+                !string.Equals(previousCheck.ClientVersion, currentCheck.ClientVersion, StringComparison.Ordinal) ||
+                !string.Equals(previousCheck.BuildId, currentCheck.BuildId, StringComparison.Ordinal) ||
+                !previousCheck.Mismatches.SequenceEqual(currentCheck.Mismatches);
+            if (changed && WpfMessageBox.Show(
+                    $"Состояние игры изменилось после предыдущей проверки.\n\nБыло: {previousCheck?.ClientVersion ?? "не проверено"} / build {previousCheck?.BuildId ?? "—"}\nСейчас: {currentCheck.ClientVersion ?? "—"} / build {currentCheck.BuildId ?? "—"}\n\nПроверка выполнена заново. Продолжить?",
+                    "CS:L — изменилось состояние игры", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
+
+            if (HashMismatchPrompt.IsRequired(currentCheck))
             {
                 var message = "Проверка SHA-256 обнаружила расхождения. Запуск может быть небезопасным или несовместимым:\n\n" +
-                    HashMismatchPrompt.Format(_check) + "\n\nПродолжить запуск?";
+                    HashMismatchPrompt.Format(currentCheck) + "\n\nПродолжить запуск?";
                 var answer = WpfMessageBox.Show(message, "CS:L — SHA-256", MessageBoxButton.YesNo, MessageBoxImage.Warning);
                 if (answer != MessageBoxResult.Yes) return;
             }
 
+            var existingProfile = _profiles.GetPath(_activeProfile.Id);
+            if (Directory.Exists(existingProfile))
+            {
+                var existingErrors = _profiles.ValidateProfile(existingProfile, _gamePath);
+                if (existingErrors.Count > 0 && WpfMessageBox.Show(
+                        "Профиль не прошёл проверку:\n" + string.Join("\n", existingErrors) +
+                        "\n\nСоздать заново по штатному шаблону? Текущая папка будет сохранена для отката.",
+                        "CS:L — целостность профиля", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
+            }
             var profilePath = await _profiles.PrepareAsync(
                 _gamePath, _activeProfile, Path.Combine(_root, "templates", "gameinfo.template.txt"));
+            var profileErrors = _profiles.ValidateProfile(profilePath, _gamePath);
+            if (profileErrors.Count > 0) throw new InvalidDataException("Профиль не прошёл финальную проверку:\n" + string.Join("\n", profileErrors));
+            var gameRoot = Path.GetFullPath(_gamePath).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+            var fullProfilePath = Path.GetFullPath(profilePath);
+            if (fullProfilePath.StartsWith(gameRoot, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException("Путь профиля неожиданно находится внутри папки игры. Запуск отменён, игровые файлы не изменялись.");
             await new GameLauncher().LaunchAsync(_gamePath, profilePath, BuildOptions(), _logger.Info);
         }
         catch (Exception ex)
@@ -515,25 +729,28 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
+            _logger.Error("Не удалось загрузить список серверов.", ex);
             ServerDetailText.Text = $"Не удалось загрузить список: {ex.Message}";
         }
     }
 
     private async void CheckUpdate_Click(object sender, RoutedEventArgs e)
     {
-        var result = await _updates.CheckAsync(Path.Combine(_root, "config", "launcher-update.json"), CurrentVersion);
-        UpdateStatusText.Text = result.Message;
-        if (result.Available && result.Update is not null)
+        try
         {
-            try
+            var result = await _updates.CheckAsync(Path.Combine(_root, "config", "launcher-update.json"), CurrentVersion);
+            UpdateStatusText.Text = result.Message;
+            if (result.Available && result.Update is not null)
             {
                 var file = await _updates.DownloadAsync(result.Update);
                 UpdateStatusText.Text = $"Обновление скачано: {file}";
             }
-            catch (Exception ex)
-            {
-                UpdateStatusText.Text = ex.Message;
-            }
+        }
+        catch (Exception ex)
+        {
+            _logger.Error("Ошибка проверки/загрузки обновления.", ex);
+            UpdateStatusText.Text = $"Ошибка обновления: {ex.Message}";
+            WpfMessageBox.Show(UpdateStatusText.Text, "CS:L — обновление", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 
@@ -548,7 +765,9 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
+            _logger.Error("Не удалось создать диагностический архив.", ex);
             DiagnosticStatusText.Text = ex.Message;
+            WpfMessageBox.Show($"Не удалось создать диагностический архив.\n\n{ex.Message}", "CS:L — диагностика", MessageBoxButton.OK, MessageBoxImage.Error);
         }
         finally
         {
@@ -570,6 +789,7 @@ public partial class MainWindow : Window
             {
                 await SaveAsync();
                 _closeApproved = true;
+                CompleteRecoveryMarkerForCleanExit();
                 _logger.Dispose();
                 Close();
                 return;
@@ -584,6 +804,7 @@ public partial class MainWindow : Window
                 if (answer == MessageBoxResult.No)
                 {
                     _closeApproved = true;
+                    CompleteRecoveryMarkerForCleanExit();
                     _logger.Dispose();
                     Close();
                     return;
@@ -592,6 +813,17 @@ public partial class MainWindow : Window
                 _closing = false;
                 return;
             }
+        }
+    }
+
+    private void CompleteRecoveryMarkerForCleanExit()
+    {
+        try { _recoveryMarker.CompleteRun(); }
+        catch (Exception ex)
+        {
+            _logger.Error("Не удалось удалить маркер завершённого запуска.", ex);
+            WpfMessageBox.Show($"Не удалось очистить маркер аварийного запуска. При следующем старте может снова появиться предложение восстановления.\n\n{ex.Message}",
+                "CS:L — ошибка завершения", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }
 
