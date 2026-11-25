@@ -81,7 +81,12 @@ public sealed class HudFileService
         var target = GetTargetDirectory(root);
         Directory.CreateDirectory(customRoot);
         RejectLink(customRoot);
-        if (Directory.Exists(target)) RejectLink(target);
+        if (Directory.Exists(target))
+        {
+            RejectLink(target);
+            var safety = HudSafetyValidator.Validate(target, root);
+            if (!safety.IsValid) throw new InvalidDataException(safety.ErrorMessage);
+        }
 
         var staging = Path.Combine(customRoot, ".csl_hud.staging-" + Guid.NewGuid().ToString("N"));
         var backup = Path.Combine(customRoot, ".csl_hud.backup-" + Guid.NewGuid().ToString("N"));

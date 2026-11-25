@@ -1,5 +1,5 @@
 using System.Windows;
-using System.Security.Principal;
+using CssLauncher.Core;
 using CssLauncher.Infrastructure;
 using WpfMessageBox = System.Windows.MessageBox;
 
@@ -7,37 +7,32 @@ namespace CssLauncher.App;
 
 public partial class App : System.Windows.Application
 {
-    private Mutex? _instanceMutex;
+    private readonly SingleInstanceManager _singleInstance = new();
 
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
-        var identity = Environment.UserDomainName + "\\" + Environment.UserName;
-        if (OperatingSystem.IsWindows()) identity = WindowsIdentity.GetCurrent().User?.Value ?? identity;
-        var mutexName = CrashRecoveryMarker.GetPerUserMutexName(identity);
         try
         {
-            _instanceMutex = new Mutex(initiallyOwned: true, mutexName, out var createdNew);
-            if (!createdNew)
+            if (!_singleInstance.Initialize(e.Args))
             {
-                _instanceMutex.Dispose();
-                _instanceMutex = null;
-                WpfMessageBox.Show("CS:L уже запущен для этого пользователя.", "CS:L", MessageBoxButton.OK, MessageBoxImage.Information);
-                Shutdown(0);
+                WpfMessageBox.Show("Лаунчер уже запущен", "CS:L", MessageBoxButton.OK, MessageBoxImage.Information);
+                Environment.Exit(0);
                 return;
             }
 
             var marker = new CrashRecoveryMarker();
             var previousRunWasUnclean = marker.BeginRun();
-            var safeMode = CrashRecoveryMarker.IsSafeModeRequested(e.Args);
+            var safeMode = _singleInstance.IsSafeMode;
+            // Safe mode is intentionally handled by MainWindow: it disables game launch,
+            // HUD operations and network/update actions while recovery UI remains available.
             var window = new MainWindow(safeMode, previousRunWasUnclean, marker);
             MainWindow = window;
             window.Show();
         }
         catch (Exception ex)
         {
-            _instanceMutex?.Dispose();
-            _instanceMutex = null;
+            _singleInstance.Release();
             WpfMessageBox.Show($"Не удалось безопасно запустить CS:L:\n{ex.Message}", "CS:L — запуск", MessageBoxButton.OK, MessageBoxImage.Error);
             Shutdown(1);
         }
@@ -45,13 +40,7 @@ public partial class App : System.Windows.Application
 
     protected override void OnExit(ExitEventArgs e)
     {
-        if (_instanceMutex is not null)
-        {
-            try { _instanceMutex.ReleaseMutex(); }
-            catch (ApplicationException) { }
-            _instanceMutex.Dispose();
-            _instanceMutex = null;
-        }
+        _singleInstance.Release();
         base.OnExit(e);
     }
 }
