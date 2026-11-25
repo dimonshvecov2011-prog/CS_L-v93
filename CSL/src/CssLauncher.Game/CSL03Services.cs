@@ -246,7 +246,14 @@ public sealed class ProfileCatalogService
         if (searchPaths.Length == 0) return new[] { "В gameinfo.txt не найден блок SearchPaths." };
         foreach (var entry in searchPaths)
         {
-            var expanded = entry.Replace("|gameinfo_path|", Path.Combine(Path.GetFullPath(gameRoot), "cstrike") + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
+            var entryForValidation = entry;
+            if (expectedProfilePath is not null)
+            {
+                var expectedProfileText = Path.GetFullPath(expectedProfilePath).Replace('\\', '/').TrimEnd('/');
+                var stagedProfileText = Path.GetFullPath(profilePath).Replace('\\', '/').TrimEnd('/');
+                entryForValidation = entryForValidation.Replace(expectedProfileText, stagedProfileText, StringComparison.OrdinalIgnoreCase);
+            }
+            var expanded = entryForValidation.Replace("|gameinfo_path|", Path.Combine(Path.GetFullPath(gameRoot), "cstrike") + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
                 .Replace("|all_source_engine_paths|", Path.GetFullPath(gameRoot).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
                 .Replace("{GAME_ROOT}", Path.GetFullPath(gameRoot), StringComparison.OrdinalIgnoreCase)
                 .Replace('/', Path.DirectorySeparatorChar);
