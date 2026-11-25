@@ -38,8 +38,8 @@ C:\CssTest\profile\
         SearchPaths
         {
             game+mod+custom_mod   |gameinfo_path|custom/*
-            game+mod              |gameinfo_path|.
-            game                  "{GAME_ROOT}/cstrike"
+            mod+mod_write+default_write_path  |gameinfo_path|.
+            game+mod              "{GAME_ROOT}/cstrike"
             game                  "{GAME_ROOT}/hl2"
             platform              "{GAME_ROOT}/platform"
         }
@@ -48,6 +48,7 @@ C:\CssTest\profile\
 ```
 
 Это предварительный шаблон. Если понадобится изменить `SearchPaths`, меняйте только этот файл и сохраните рабочий вариант.
+Передавайте файловой системе каталоги `cstrike`, `hl2` и `platform`, а не предполагаемые имена отдельных `.vpk`: Source автоматически подключает VPK-архивы, которые находятся в этих каталогах.
 
 ## 3. Попробуйте оба варианта запуска
 

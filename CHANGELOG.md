@@ -6,7 +6,14 @@
 
 Изменений пока нет.
 
-## [0.3.5] — подготовка релиза
+## [0.3.6] — hotfix SearchPaths
+
+### Исправлено
+
+- Профиль больше не требует фиксированные имена отдельных CS:S/HL2/platform VPK-файлов. SearchPaths указывают на стандартные каталоги, откуда Source загружает архивы и loose-файлы; это устраняет ложные ошибки «Не найден SearchPath» на штатных установках.
+- Добавлен regression-тест на реальный production template и структуру установки без этих отдельных VPK-имён. Steam-файлы не изменяются.
+
+## [0.3.5] — стабильность, резервирование и восстановление
 
 ### Добавлено
 
@@ -122,7 +129,8 @@
 - Базовая проверка версии по `steam.inf`, настройки и журналы в профиле пользователя.
 - Начальная инфраструктура сборки self-contained приложения и Windows-установщика.
 
-[Unreleased]: https://github.com/dimonshvecov2011-prog/CS_L-v93/compare/v0.3.5...main
+[Unreleased]: https://github.com/dimonshvecov2011-prog/CS_L-v93/compare/v0.3.6...main
+[0.3.6]: https://github.com/dimonshvecov2011-prog/CS_L-v93/compare/v0.3.5...v0.3.6
 [0.3.5]: https://github.com/dimonshvecov2011-prog/CS_L-v93/compare/v0.3.3...v0.3.5
 [0.3.3]: https://github.com/dimonshvecov2011-prog/CS_L-v93/releases/tag/v0.3.3
 [0.3.0]: https://github.com/dimonshvecov2011-prog/CS_L-v93/releases/tag/v0.3.0

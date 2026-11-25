@@ -11,7 +11,7 @@
     <RootNamespace>CssLauncher.App</RootNamespace>
     <Product>CS:L Launcher</Product>
     <Description>CS:L — Counter-Strike: Source launcher</Description>
-    <Version>0.3.5</Version>
+    <Version>0.3.6</Version>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../CssLauncher.Core/CssLauncher.Core.csproj" />

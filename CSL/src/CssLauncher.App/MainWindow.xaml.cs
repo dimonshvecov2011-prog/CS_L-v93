@@ -14,7 +14,7 @@ namespace CssLauncher.App;
 
 public partial class MainWindow : Window
 {
-    private const string CurrentVersion = "0.3.5";
+    private const string CurrentVersion = "0.3.6";
     private readonly FileLogger _logger = new();
     private readonly JsonSettingsService _settings = new();
     private readonly string _root = AppContext.BaseDirectory;

@@ -225,6 +225,32 @@ public class CoreTests
     }
 
     [Fact]
+    public async Task ProductionProfileTemplateUsesGameDirectoriesWithoutAssumingVpkFileNames()
+    {
+        var app = TempDirectory("CssProductionTemplateApp");
+        var game = TempDirectory("CssProductionTemplateGame");
+        try
+        {
+            foreach (var relative in new[] { "cstrike", "cstrike/bin", "cstrike/download", "hl2", "platform" })
+                Directory.CreateDirectory(Path.Combine(game, relative));
+
+            var template = Path.Combine(AppContext.BaseDirectory, "gameinfo.template.txt");
+            Assert.True(File.Exists(template), $"Production template was not copied to test output: {template}");
+            var service = new ProfileCatalogService(app);
+            var profilePath = await service.PrepareAsync(game, service.Get("classic"), template);
+            var generated = await File.ReadAllTextAsync(Path.Combine(profilePath, "gameinfo.txt"));
+            var normalizedGameRoot = Path.GetFullPath(game).Replace("\\", "/");
+
+            Assert.Empty(service.ValidateProfile(profilePath, game));
+            Assert.Contains($"{normalizedGameRoot}/cstrike", generated);
+            Assert.Contains($"{normalizedGameRoot}/hl2", generated);
+            Assert.DoesNotContain("cstrike_english.vpk", generated);
+            Assert.DoesNotContain("hl2_textures.vpk", generated);
+        }
+        finally { DeleteDirectory(app); DeleteDirectory(game); }
+    }
+
+    [Fact]
     public async Task ProfileGenerationKeepsPreviousValidVersionAndRollbackRestoresIt()
     {
         var app = TempDirectory("CssProfileRollbackApp");

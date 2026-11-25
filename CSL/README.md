@@ -1,4 +1,4 @@
-# CS:L 0.3.5 — стабильность и восстановление
+# CS:L 0.3.6 — исправление SearchPaths профиля
 
 Windows-лаунчер для текущей Steam-сборки Counter-Strike: Source. Совместимость определяется по версии клиента из `cstrike/steam.inf`, а Steam `buildid` используется как дополнительная диагностическая информация. Файлы Valve в репозитории отсутствуют.
 
@@ -151,13 +151,13 @@ iscc .\installer\CSL-Setup.iss
 
 ## Автоматическая сборка через GitHub Actions
 
-Файл `.github/workflows/build-csl.yml` собирает проект на `windows-latest` без установки .NET или Inno Setup на компьютере разработчика. Workflow выполняет restore, build, тесты, self-contained publish и собирает `CSL-Setup-0.3.5.exe`; перед релизом версия тега сверяется с версиями приложения и установщика. Готовые portable-файлы и установщик доступны во вкладке **Actions → Artifacts**.
+Файл `.github/workflows/build-csl.yml` собирает проект на `windows-latest` без установки .NET или Inno Setup на компьютере разработчика. Workflow выполняет restore, build, тесты, self-contained publish и собирает `CSL-Setup-0.3.6.exe`; перед релизом версия тега сверяется с версиями приложения и установщика. Готовые portable-файлы и установщик доступны во вкладке **Actions → Artifacts**.
 
 Для релизной сборки создайте и отправьте тег:
 
 ```powershell
-git tag v0.3.5
-git push origin v0.3.5
+git tag v0.3.6
+git push origin v0.3.6
 ```
 
 Для тега `v*` workflow дополнительно создаёт GitHub Release и прикладывает установщик. Сам репозиторий не должен содержать файлы CS:S, Steam или Valve.
@@ -173,6 +173,12 @@ git push origin v0.3.5
 - Для локальной проверки используйте `dotnet build CssLauncher.sln -c Release -p:EnableWindowsTargeting=true` и `dotnet test tests/CssLauncher.Tests/CssLauncher.Tests.csproj -c Release`. WPF нельзя интерактивно проверить в Linux.
 
 Updater transaction engine покрывается fake-channel тестами: пакет проходит проверку размера/SHA-256 и staging, предыдущая версия сохраняется, а при отказе/таймауте health confirmation выполняется rollback. **Игровой update channel остаётся пустым и выключенным; текущий интерфейс не применяет обновления.** Запуск новой версии из Windows требует отдельного bootstrapper-а, поэтому самообновление не включено игрокам.
+
+## CS:L 0.3.6 — исправление запуска профиля
+
+- Шаблон `gameinfo.txt` передаёт Source реальные каталоги `cstrike`, `hl2` и `platform`, а не фиксированные имена отдельных VPK-файлов, которые могут отсутствовать. Движок сам находит VPK-архивы в этих каталогах.
+- Добавлен regression-тест на production template: корректный профиль генерируется для обычной структуры установки с этими каталогами даже без файлов с прежними предполагаемыми именами VPK.
+- Лаунчер не меняет и не переносит файлы Steam; меняется только профиль CS:L в `%AppData%`.
 
 ## CS:L 0.3.3 — интерфейс и hardening
 
