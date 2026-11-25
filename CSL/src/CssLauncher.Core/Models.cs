@@ -9,13 +9,13 @@ public record ManifestFile(string Path, string Sha256);
 public record ManifestVariant(string Id, string? Description, IReadOnlyList<ManifestFile> Files);
 public record VersionManifest(int SchemaVersion, string Game, string Version, IReadOnlyList<int> KnownVersions, IReadOnlyList<int>? KnownBuilds = null, bool EnableSha256Checks = false, IReadOnlyList<ManifestVariant>? Variants = null);
 public record ExecutableDetection(string? PreferredPath, IReadOnlyList<string> FoundPaths);
-public record LaunchOptions(bool Novid = true, bool Console = true, bool Windowed = false, bool Noborder = false, int? Width = null, int? Height = null, string Extra = "", bool Steam = true, string Executable = "");
+public record LaunchOptions(bool Novid = true, bool Console = true, bool Windowed = false, bool Noborder = false, int? Width = null, int? Height = null, string Extra = "", bool Steam = true, string Executable = "", bool Insecure = false);
 
 public record LauncherSettings(string GamePath = "", LaunchOptions? LaunchOptions = null, bool DiagnosticMode = false)
 {
     public int SchemaVersion { get; init; } = 1;
-    public string ProfileId { get; init; } = "classic";
     public string Executable { get; init; } = "";
+    public bool HudEnabled { get; init; }
 
     public LaunchOptions EffectiveLaunchOptions => LaunchOptions ?? new();
 }

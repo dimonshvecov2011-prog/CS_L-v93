@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "enabled": false,
+  "mode": "replace",
+  "zOrder": 1000,
+  "disableValveHud": true,
+  "fallback": "overlay",
+  "theme": "classic",
+  "scale": 1.0,
+  "safeZone": 0.04,
+  "showHealth": true,
+  "showArmor": true,
+  "showAmmo": true,
+  "showMoney": true,
+  "showRoundTimer": true,
+  "showServerInfo": false
+}
