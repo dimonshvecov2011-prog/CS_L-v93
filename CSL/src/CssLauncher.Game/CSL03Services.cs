@@ -250,7 +250,7 @@ public sealed class ProfileCatalogService
         var searchPathsBody = ExtractBalancedBlock(filesystemBody, searchPathsOpen);
         if (searchPathsBody is null) return new ProfileValidationResult(new[] { "Блок SearchPaths в gameinfo.txt не закрыт корректно." }, warnings, searchPaths, Array.Empty<string>());
         searchPaths.AddRange(SearchPathLine.Matches(searchPathsBody)
-            .Select(match => match.Groups[1].Success ? match.Groups[1].Value : match.Groups[2].Value).ToArray();
+            .Select(match => match.Groups[1].Success ? match.Groups[1].Value : match.Groups[2].Value).ToArray());
         if (searchPaths.Count == 0) return new ProfileValidationResult(new[] { "В gameinfo.txt не найден блок SearchPaths." }, warnings, searchPaths, Array.Empty<string>());
         var gameRootPath = Path.GetFullPath(gameRoot);
         var cstrikePath = Path.Combine(gameRootPath, "cstrike");
