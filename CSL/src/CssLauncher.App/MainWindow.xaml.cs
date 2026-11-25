@@ -14,7 +14,7 @@ namespace CssLauncher.App;
 
 public partial class MainWindow : Window
 {
-    private const string CurrentVersion = "0.3.6-rc1";
+    private const string CurrentVersion = "0.3.6-rc2";
     private readonly FileLogger _logger = new();
     private readonly JsonSettingsService _settings = new();
     private readonly string _root = AppContext.BaseDirectory;
@@ -318,7 +318,7 @@ public partial class MainWindow : Window
             if (WpfMessageBox.Show($"Пересоздать профиль «{_activeProfile.Name}» по официальному cstrike/gameinfo.txt? Текущая версия будет сохранена для отката.",
                     "CS:L — сброс профиля", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
             var path = await _profiles.ResetToFactoryFromGameInfoAsync(_gamePath, _activeProfile.Id);
-            var errors = _profiles.ValidateProfile(path, _gamePath);
+            var errors = _profiles.ValidateProfile(path, _gamePath, requireGameStructure: true);
             if (errors.Count > 0) throw new InvalidDataException("Созданный профиль не прошёл проверку:\n" + string.Join("\n", errors));
             _logger.Info($"Профиль {_activeProfile.Id} сброшен к заводскому.");
             WpfMessageBox.Show("Профиль пересоздан и прошёл проверку.", "CS:L — сброс профиля", MessageBoxButton.OK, MessageBoxImage.Information);
@@ -686,15 +686,21 @@ public partial class MainWindow : Window
             var existingProfile = _profiles.GetPath(_activeProfile.Id);
             if (Directory.Exists(existingProfile))
             {
-                var existingErrors = _profiles.ValidateProfile(existingProfile, _gamePath);
+                var existingErrors = _profiles.ValidateProfile(existingProfile, _gamePath, requireGameStructure: true);
                 if (existingErrors.Count > 0 && WpfMessageBox.Show(
                         "Профиль не прошёл проверку:\n" + string.Join("\n", existingErrors) +
                         "\n\nСоздать заново по официальному cstrike/gameinfo.txt? Текущая папка будет сохранена для отката.",
                         "CS:L — целостность профиля", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
             }
             var profilePath = await _profiles.PrepareFromGameInfoAsync(_gamePath, _activeProfile);
-            var profileErrors = _profiles.ValidateProfile(profilePath, _gamePath);
-            if (profileErrors.Count > 0) throw new InvalidDataException("Профиль не прошёл финальную проверку:\n" + string.Join("\n", profileErrors));
+            var profileDiagnostics = _profiles.ValidateProfileDetailed(profilePath, _gamePath, requireGameStructure: true);
+            foreach (var warning in profileDiagnostics.Warnings) _logger.Warning(warning);
+            _logger.Info("SearchPaths из профиля:\n" + string.Join("\n", profileDiagnostics.SearchPaths));
+            _logger.Info("VPK в cstrike:\n" + (profileDiagnostics.CstrikeVpkFiles.Count == 0
+                ? "(нет файлов *.vpk)"
+                : string.Join("\n", profileDiagnostics.CstrikeVpkFiles)));
+            if (profileDiagnostics.Errors.Count > 0)
+                throw new InvalidDataException("Профиль не прошёл финальную проверку:\n" + string.Join("\n", profileDiagnostics.Errors));
             var gameRoot = Path.GetFullPath(_gamePath).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
             var fullProfilePath = Path.GetFullPath(profilePath);
             if (fullProfilePath.StartsWith(gameRoot, StringComparison.OrdinalIgnoreCase))

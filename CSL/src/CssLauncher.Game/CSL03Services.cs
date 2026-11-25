@@ -49,14 +49,15 @@ public sealed class ProfileCatalogService
         {
             if (!File.Exists(templatePath)) throw new FileNotFoundException("Не найден шаблон gameinfo.", templatePath);
             return await File.ReadAllTextAsync(templatePath, token);
-        }, preserveExistingData: true, reuseIfCurrent: true, ct: ct);
+        }, requireGameStructure: false, preserveExistingData: true, reuseIfCurrent: true, ct: ct);
 
     public Task<string> PrepareFromGameInfoAsync(string gameRoot, LauncherProfile profile, CancellationToken ct = default) =>
         PrepareCoreAsync(gameRoot, profile, token => ReadOfficialGameInfoAsync(gameRoot, token),
-            preserveExistingData: true, reuseIfCurrent: true, ct: ct);
+            requireGameStructure: true, preserveExistingData: true, reuseIfCurrent: true, ct: ct);
 
     private async Task<string> PrepareCoreAsync(string gameRoot, LauncherProfile profile,
         Func<CancellationToken, Task<string>> gameInfoFactory,
+        bool requireGameStructure,
         bool preserveExistingData, bool reuseIfCurrent, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
@@ -82,7 +83,7 @@ public sealed class ProfileCatalogService
             if (gameInfo.Contains("{GAME_ROOT}", StringComparison.Ordinal))
                 throw new InvalidDataException("В gameinfo.txt осталась неподставленная переменная {GAME_ROOT}.");
             var profileJson = JsonSerializer.Serialize(builtInProfile, new JsonSerializerOptions { WriteIndented = true });
-            if (reuseIfCurrent && Directory.Exists(path) && ValidateProfile(path, gameRoot).Count == 0 &&
+            if (reuseIfCurrent && Directory.Exists(path) && ValidateProfile(path, gameRoot, requireGameStructure: requireGameStructure).Count == 0 &&
                 File.Exists(Path.Combine(path, "profile.json")) &&
                 string.Equals(await File.ReadAllTextAsync(Path.Combine(path, "gameinfo.txt"), ct), gameInfo, StringComparison.Ordinal) &&
                 string.Equals(await File.ReadAllTextAsync(Path.Combine(path, "profile.json"), ct), profileJson, StringComparison.Ordinal))
@@ -92,7 +93,7 @@ public sealed class ProfileCatalogService
             if (preserveExistingData && Directory.Exists(path)) CopyPreservedProfileContents(path, staging, ct);
             await WriteAtomicallyAsync(Path.Combine(staging, "gameinfo.txt"), gameInfo, ct);
             await WriteAtomicallyAsync(Path.Combine(staging, "profile.json"), profileJson, ct);
-            var validation = ValidateProfile(staging, gameRoot, path);
+            var validation = ValidateProfile(staging, gameRoot, path, requireGameStructure);
             if (validation.Count > 0)
                 throw new InvalidDataException("Сгенерированный профиль не прошёл проверку SearchPaths:\n" + string.Join("\n", validation));
 
@@ -106,7 +107,7 @@ public sealed class ProfileCatalogService
             try
             {
                 await MoveDirectoryWithRetriesAsync(staging, path, ct);
-                var finalErrors = ValidateProfile(path, gameRoot);
+                var finalErrors = ValidateProfile(path, gameRoot, requireGameStructure: requireGameStructure);
                 if (finalErrors.Count > 0)
                     throw new InvalidDataException("Профиль после установки не прошёл проверку:\n" + string.Join("\n", finalErrors));
             }
@@ -186,11 +187,11 @@ public sealed class ProfileCatalogService
         {
             if (!File.Exists(templatePath)) throw new FileNotFoundException("Не найден шаблон gameinfo.", templatePath);
             return await File.ReadAllTextAsync(templatePath, token);
-        }, preserveExistingData: false, reuseIfCurrent: false, ct);
+        }, requireGameStructure: false, preserveExistingData: false, reuseIfCurrent: false, ct);
 
     public Task<string> ResetToFactoryFromGameInfoAsync(string gameRoot, string id, CancellationToken ct = default) =>
         PrepareCoreAsync(gameRoot, Get(id), token => ReadOfficialGameInfoAsync(gameRoot, token),
-            preserveExistingData: false, reuseIfCurrent: false, ct: ct);
+            requireGameStructure: true, preserveExistingData: false, reuseIfCurrent: false, ct: ct);
 
     public async Task ResetAllToFactoryAsync(string? gameRoot, string templatePath, CancellationToken ct = default)
     {
@@ -224,26 +225,48 @@ public sealed class ProfileCatalogService
         }
     }
 
-    public IReadOnlyList<string> ValidateProfile(string profilePath, string gameRoot, string? expectedProfilePath = null)
+    public IReadOnlyList<string> ValidateProfile(string profilePath, string gameRoot, string? expectedProfilePath = null,
+        bool requireGameStructure = false) =>
+        ValidateProfileDetailed(profilePath, gameRoot, expectedProfilePath, requireGameStructure).Errors;
+
+    public ProfileValidationResult ValidateProfileDetailed(string profilePath, string gameRoot, string? expectedProfilePath = null,
+        bool requireGameStructure = false)
     {
         EnsureNoReparsePointsRecursive(profilePath);
         var errors = new List<string>();
+        var warnings = new List<string>();
+        var searchPaths = new List<string>();
         var gameInfoPath = Path.Combine(profilePath, "gameinfo.txt");
-        if (!File.Exists(gameInfoPath)) return new[] { "gameinfo.txt отсутствует." };
+        if (!File.Exists(gameInfoPath)) return new ProfileValidationResult(new[] { "gameinfo.txt отсутствует." }, warnings, searchPaths, Array.Empty<string>());
         var text = File.ReadAllText(gameInfoPath);
         var filesystemMatch = FileSystemBlock.Match(text);
-        if (!filesystemMatch.Success) return new[] { "В gameinfo.txt отсутствует блок FileSystem." };
+        if (!filesystemMatch.Success) return new ProfileValidationResult(new[] { "В gameinfo.txt отсутствует блок FileSystem." }, warnings, searchPaths, Array.Empty<string>());
         var filesystemOpen = filesystemMatch.Index + filesystemMatch.Length - 1;
         var filesystemBody = ExtractBalancedBlock(text, filesystemOpen);
-        if (filesystemBody is null) return new[] { "Блок FileSystem в gameinfo.txt не закрыт корректно." };
+        if (filesystemBody is null) return new ProfileValidationResult(new[] { "Блок FileSystem в gameinfo.txt не закрыт корректно." }, warnings, searchPaths, Array.Empty<string>());
         var searchPathsMatch = SearchPathsBlock.Match(filesystemBody);
-        if (!searchPathsMatch.Success) return new[] { "В блоке FileSystem отсутствует SearchPaths." };
+        if (!searchPathsMatch.Success) return new ProfileValidationResult(new[] { "В блоке FileSystem отсутствует SearchPaths." }, warnings, searchPaths, Array.Empty<string>());
         var searchPathsOpen = searchPathsMatch.Index + searchPathsMatch.Length - 1;
         var searchPathsBody = ExtractBalancedBlock(filesystemBody, searchPathsOpen);
-        if (searchPathsBody is null) return new[] { "Блок SearchPaths в gameinfo.txt не закрыт корректно." };
-        var searchPaths = SearchPathLine.Matches(searchPathsBody)
+        if (searchPathsBody is null) return new ProfileValidationResult(new[] { "Блок SearchPaths в gameinfo.txt не закрыт корректно." }, warnings, searchPaths, Array.Empty<string>());
+        searchPaths.AddRange(SearchPathLine.Matches(searchPathsBody)
             .Select(match => match.Groups[1].Success ? match.Groups[1].Value : match.Groups[2].Value).ToArray();
-        if (searchPaths.Length == 0) return new[] { "В gameinfo.txt не найден блок SearchPaths." };
+        if (searchPaths.Count == 0) return new ProfileValidationResult(new[] { "В gameinfo.txt не найден блок SearchPaths." }, warnings, searchPaths, Array.Empty<string>());
+        var gameRootPath = Path.GetFullPath(gameRoot);
+        var cstrikePath = Path.Combine(gameRootPath, "cstrike");
+        var cstrikeVpkFiles = Directory.Exists(cstrikePath)
+            ? Directory.EnumerateFiles(cstrikePath, "*.vpk", SearchOption.TopDirectoryOnly).OrderBy(path => path, StringComparer.OrdinalIgnoreCase).ToArray()
+            : Array.Empty<string>();
+        if (requireGameStructure)
+        {
+            foreach (var required in new[] { "cstrike", "hl2", "platform", Path.Combine("cstrike", "bin") })
+            {
+                if (!Directory.Exists(Path.Combine(gameRootPath, required)))
+                    errors.Add($"Не найдена обязательная папка игры: {required}");
+            }
+            if (!cstrikeVpkFiles.Any(path => Path.GetFileName(path).EndsWith("_dir.vpk", StringComparison.OrdinalIgnoreCase)))
+                errors.Add("Игра установлена неполностью, проверьте файлы в Steam: в cstrike нет базового *_dir.vpk.");
+        }
         foreach (var entry in searchPaths)
         {
             var entryForValidation = entry;
@@ -266,9 +289,14 @@ public sealed class ProfileCatalogService
             if (full.Equals(downloadPath, StringComparison.OrdinalIgnoreCase) && !Directory.Exists(full)) continue;
             var profileEquivalent = TryMapToProfilePath(full, expectedProfilePath ?? profilePath);
             if (!SearchPathExists(full) && (profileEquivalent is null || !SearchPathExists(profileEquivalent)))
-                errors.Add($"Не найден SearchPath: {entry}");
+            {
+                if (full.EndsWith(".vpk", StringComparison.OrdinalIgnoreCase))
+                    warnings.Add($"Архив {full} есть в официальном gameinfo, но не установлен (вероятно, языковой пакет). SearchPath: {entry}");
+                else
+                    errors.Add($"Не найден SearchPath: {entry}");
+            }
         }
-        return errors;
+        return new ProfileValidationResult(errors, warnings, searchPaths, cstrikeVpkFiles);
     }
 
     private static bool SearchPathExists(string fullPath)
@@ -515,6 +543,12 @@ public sealed class ProfileCatalogService
 }
 
 public sealed record ProfileBackupInfo(string Path, DateTime CreatedUtc);
+
+public sealed record ProfileValidationResult(
+    IReadOnlyList<string> Errors,
+    IReadOnlyList<string> Warnings,
+    IReadOnlyList<string> SearchPaths,
+    IReadOnlyList<string> CstrikeVpkFiles);
 
 public sealed class ServerListService
 {

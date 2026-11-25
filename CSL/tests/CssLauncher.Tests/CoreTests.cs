@@ -233,6 +233,7 @@ public class CoreTests
         {
             var game = Path.Combine(library, "steamapps", "common", "Counter-Strike Source");
             Directory.CreateDirectory(Path.Combine(game, "cstrike"));
+            Directory.CreateDirectory(Path.Combine(game, "cstrike", "bin"));
             Directory.CreateDirectory(Path.Combine(game, "hl2"));
             Directory.CreateDirectory(Path.Combine(game, "platform"));
             await File.WriteAllTextAsync(Path.Combine(game, "cstrike", "cstrike_pak_dir.vpk"), "vpk");
@@ -301,6 +302,7 @@ public class CoreTests
         {
             Directory.CreateDirectory(Path.Combine(game, "cstrike", "bin"));
             Directory.CreateDirectory(Path.Combine(game, "hl2"));
+            Directory.CreateDirectory(Path.Combine(game, "platform"));
             await File.WriteAllTextAsync(Path.Combine(game, "cstrike", "cstrike_pak_dir.vpk"), "vpk");
             await File.WriteAllTextAsync(Path.Combine(game, "hl2", "hl2_misc_dir.vpk"), "vpk");
             await File.WriteAllTextAsync(Path.Combine(game, "cstrike", "gameinfo.txt"), """
@@ -332,6 +334,76 @@ public class CoreTests
             Assert.Contains($"{normalizedGame}/cstrike/cstrike_pak.vpk", generated);
             Assert.Contains($"{normalizedGame}/hl2/hl2_misc.vpk", generated);
             Assert.Empty(service.ValidateProfile(profilePath, game));
+        }
+        finally { DeleteDirectory(app); DeleteDirectory(game); }
+    }
+
+    [Fact]
+    public async Task MissingLanguageVpkIsWarningButDoesNotBlockProfile()
+    {
+        var app = TempDirectory("CssLanguageVpkApp");
+        var game = TempDirectory("CssLanguageVpkGame");
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(game, "cstrike", "bin"));
+            Directory.CreateDirectory(Path.Combine(game, "hl2"));
+            Directory.CreateDirectory(Path.Combine(game, "platform"));
+            await File.WriteAllTextAsync(Path.Combine(game, "cstrike", "cstrike_pak_dir.vpk"), "vpk");
+            await File.WriteAllTextAsync(Path.Combine(game, "cstrike", "gameinfo.txt"), """
+                "GameInfo"
+                {
+                    FileSystem
+                    {
+                        SearchPaths
+                        {
+                            game+mod              |gameinfo_path|.
+                            game                  |gameinfo_path|cstrike_pak.vpk
+                            game                  |gameinfo_path|cstrike_english.vpk
+                        }
+                    }
+                }
+                """);
+
+            var service = new ProfileCatalogService(app);
+            var profilePath = await service.PrepareFromGameInfoAsync(game, service.Get("classic"));
+            var diagnostics = service.ValidateProfileDetailed(profilePath, game, requireGameStructure: true);
+
+            Assert.Empty(diagnostics.Errors);
+            var warning = Assert.Single(diagnostics.Warnings);
+            Assert.Contains("cstrike_english.vpk", warning);
+            Assert.Contains("вероятно, языковой пакет", warning);
+        }
+        finally { DeleteDirectory(app); DeleteDirectory(game); }
+    }
+
+    [Fact]
+    public async Task MissingBaseVpkBlocksOfficialProfile()
+    {
+        var app = TempDirectory("CssMissingBaseVpkApp");
+        var game = TempDirectory("CssMissingBaseVpkGame");
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(game, "cstrike", "bin"));
+            Directory.CreateDirectory(Path.Combine(game, "hl2"));
+            Directory.CreateDirectory(Path.Combine(game, "platform"));
+            await File.WriteAllTextAsync(Path.Combine(game, "cstrike", "gameinfo.txt"), """
+                "GameInfo"
+                {
+                    FileSystem
+                    {
+                        SearchPaths
+                        {
+                            game+mod |gameinfo_path|.
+                            game     |gameinfo_path|cstrike_pak.vpk
+                        }
+                    }
+                }
+                """);
+
+            var service = new ProfileCatalogService(app);
+            var error = await Assert.ThrowsAsync<InvalidDataException>(() =>
+                service.PrepareFromGameInfoAsync(game, service.Get("classic")));
+            Assert.Contains("Игра установлена неполностью", error.Message);
         }
         finally { DeleteDirectory(app); DeleteDirectory(game); }
     }
