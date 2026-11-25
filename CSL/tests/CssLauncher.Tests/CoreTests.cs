@@ -242,8 +242,9 @@ public class CoreTests
             var normalizedGameRoot = Path.GetFullPath(game).Replace("\\", "/");
 
             Assert.Empty(service.ValidateProfile(profilePath, game));
-            Assert.Contains($"{normalizedGameRoot}/cstrike", generated);
-            Assert.Contains($"{normalizedGameRoot}/hl2", generated);
+            Assert.Contains($"{normalizedGameRoot}/cstrike/*", generated);
+            Assert.Contains($"{normalizedGameRoot}/hl2/*", generated);
+            Assert.Contains($"{normalizedGameRoot}/platform/*", generated);
             Assert.DoesNotContain("cstrike_english.vpk", generated);
             Assert.DoesNotContain("hl2_textures.vpk", generated);
         }

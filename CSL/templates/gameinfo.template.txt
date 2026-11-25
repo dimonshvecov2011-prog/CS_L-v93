@@ -12,11 +12,10 @@
             // Profile-owned custom content must be searched first.
             game+mod+custom_mod   |gameinfo_path|custom/*
 
-            // Mount the official game directories. Source discovers and mounts
-            // the VPK archives contained in these folders automatically.
-            game+mod              "{GAME_ROOT}/cstrike"
-            game                  "{GAME_ROOT}/hl2"
-            platform              "{GAME_ROOT}/platform"
+            // The /* suffix mounts nested folders and VPK archives in each tree.
+            game+mod              "{GAME_ROOT}/cstrike/*"
+            game                  "{GAME_ROOT}/hl2/*"
+            platform              "{GAME_ROOT}/platform/*"
 
             // Profile directory and original loose files.
             mod+mod_write+default_write_path  |gameinfo_path|.
