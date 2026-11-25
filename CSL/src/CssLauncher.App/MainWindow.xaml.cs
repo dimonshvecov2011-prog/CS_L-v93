@@ -18,7 +18,6 @@ public partial class MainWindow : Window
     private readonly FileLogger _logger = new();
     private readonly JsonSettingsService _settings = new();
     private readonly string _root = AppContext.BaseDirectory;
-    private readonly ProfileCatalogService _profiles = new();
     private readonly bool _safeMode;
     private readonly bool _previousRunWasUnclean;
     private readonly CrashRecoveryMarker _recoveryMarker;
@@ -26,14 +25,11 @@ public partial class MainWindow : Window
     private readonly LauncherUpdateService _updates = new();
     private readonly DiagnosticArchiveService _diagnostics = new();
     private readonly LaunchGate _launchGate = new();
-    private readonly ProfileSelectionState _profileSelection = new(ProfileCatalogService.BuiltInProfiles);
     private VersionCheckResult? _check;
-    private LauncherProfile _activeProfile => _profileSelection.ActiveProfile;
     private CancellationTokenSource? _installCts;
     private string _gamePath = "";
     private string _selectedExecutable = "";
     private string _savedExecutable = "";
-    private bool _syncingProfile;
     private bool _syncingExecutable;
     private bool _closing;
     private bool _closeApproved;
@@ -66,10 +62,10 @@ public partial class MainWindow : Window
                 }
                 if (_previousRunWasUnclean)
                 {
-                    RecoveryNoticeText.Text = "Предыдущий запуск CS:L завершился некорректно. Проверьте копии настроек и профиля, создайте диагностический архив или пересоздайте профиль.";
+                    RecoveryNoticeText.Text = "Предыдущий запуск CS:L завершился некорректно. Проверьте копии настроек и создайте диагностический архив.";
                     RecoveryNotice.Visibility = Visibility.Visible;
                     var answer = WpfMessageBox.Show(
-                        "Предыдущий запуск CS:L завершился некорректно. Открыть вкладку восстановления? Там доступны копии настроек, откат профиля и диагностика.",
+                        "Предыдущий запуск CS:L завершился некорректно. Открыть вкладку восстановления? Там доступны копии настроек и диагностика.",
                         "CS:L — восстановление после сбоя", MessageBoxButton.YesNo, MessageBoxImage.Warning);
                     if (answer == MessageBoxResult.Yes) MainTabs.SelectedItem = RecoveryTab;
                 }
@@ -138,9 +134,6 @@ public partial class MainWindow : Window
 
     private async Task LoadAsync()
     {
-        ProfileBox.ItemsSource = ProfileCatalogService.BuiltInProfiles;
-        ProfilesList.ItemsSource = ProfileCatalogService.BuiltInProfiles;
-
         LauncherSettings settings;
         try
         {
@@ -193,8 +186,6 @@ public partial class MainWindow : Window
         DiagnosticBox.IsChecked = settings.DiagnosticMode;
         SteamBox.IsChecked = settings.EffectiveLaunchOptions.Steam;
 
-        var profile = _profiles.Get(settings.ProfileId);
-        SetActiveProfile(profile, applyProfileDefaults: settings.LaunchOptions is null);
         await RefreshRecoveryListsAsync();
         if (settings.LaunchOptions is not null)
         {
@@ -236,7 +227,6 @@ public partial class MainWindow : Window
             BuildOptions(),
             DiagnosticBox.IsChecked == true)
         {
-            ProfileId = _activeProfile.Id,
             Executable = string.IsNullOrWhiteSpace(_selectedExecutable) ? _savedExecutable : Path.GetFileName(_selectedExecutable)
         };
         return _settings.SaveAsync(settings);
@@ -247,9 +237,7 @@ public partial class MainWindow : Window
         try
         {
             SettingsBackupsList.ItemsSource = await _settings.GetRecoverableBackupsAsync();
-            ProfileBackupsList.ItemsSource = _profiles.GetBackups(_activeProfile.Id);
             RestoreSettingsButton.IsEnabled = SettingsBackupsList.Items.Count > 0;
-            RollbackProfileButton.IsEnabled = ProfileBackupsList.Items.Count > 0;
         }
         catch (Exception ex)
         {
@@ -284,60 +272,12 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void RollbackProfile_Click(object sender, RoutedEventArgs e)
-    {
-        try
-        {
-            if (ProfileBackupsList.SelectedItem is not ProfileBackupInfo backup)
-            {
-                WpfMessageBox.Show("Сначала выберите резервную копию профиля.", "CS:L — откат профиля", MessageBoxButton.OK, MessageBoxImage.Information);
-                return;
-            }
-            if (WpfMessageBox.Show($"Откатить профиль «{_activeProfile.Name}» к копии от {backup.CreatedUtc:u}? Текущий профиль будет сохранён.",
-                    "CS:L — подтверждение отката", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
-            var path = await _profiles.RollbackAsync(_activeProfile.Id, backup.Path, _gamePath);
-            var errors = _profiles.ValidateProfile(path, _gamePath);
-            if (errors.Count > 0) throw new InvalidDataException("Откат выполнен, но профиль не прошёл проверку:\n" + string.Join("\n", errors));
-            _logger.Info($"Профиль {_activeProfile.Id} откатан к {backup.Path}.");
-            WpfMessageBox.Show("Профиль восстановлен и прошёл проверку.", "CS:L — откат профиля", MessageBoxButton.OK, MessageBoxImage.Information);
-            await RefreshRecoveryListsAsync();
-        }
-        catch (Exception ex)
-        {
-            _logger.Error("Ошибка отката профиля.", ex);
-            WpfMessageBox.Show($"Не удалось откатить профиль.\n\n{ex.Message}", "CS:L — откат профиля", MessageBoxButton.OK, MessageBoxImage.Error);
-        }
-    }
-
-    private async void ResetProfile_Click(object sender, RoutedEventArgs e)
-    {
-        try
-        {
-            if (string.IsNullOrWhiteSpace(_gamePath) || !Directory.Exists(_gamePath))
-                throw new DirectoryNotFoundException("Для пересоздания профиля сначала укажите папку CS:S.");
-            if (WpfMessageBox.Show($"Пересоздать профиль «{_activeProfile.Name}» по официальному cstrike/gameinfo.txt? Текущая версия будет сохранена для отката.",
-                    "CS:L — сброс профиля", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
-            var path = await _profiles.ResetToFactoryFromGameInfoAsync(_gamePath, _activeProfile.Id);
-            var errors = _profiles.ValidateProfile(path, _gamePath, requireGameStructure: true);
-            if (errors.Count > 0) throw new InvalidDataException("Созданный профиль не прошёл проверку:\n" + string.Join("\n", errors));
-            _logger.Info($"Профиль {_activeProfile.Id} сброшен к заводскому.");
-            WpfMessageBox.Show("Профиль пересоздан и прошёл проверку.", "CS:L — сброс профиля", MessageBoxButton.OK, MessageBoxImage.Information);
-            await RefreshRecoveryListsAsync();
-        }
-        catch (Exception ex)
-        {
-            _logger.Error("Ошибка сброса профиля.", ex);
-            WpfMessageBox.Show($"Не удалось пересоздать профиль.\n\n{ex.Message}", "CS:L — сброс профиля", MessageBoxButton.OK, MessageBoxImage.Error);
-        }
-    }
-
     private async void ResetEverything_Click(object sender, RoutedEventArgs e)
     {
         try
         {
-            if (WpfMessageBox.Show("Выполнить factory reset CS:L? Настройки вернутся к значениям по умолчанию, а все созданные профили будут заменены или убраны в резервные копии. Игровые файлы не затрагиваются.",
-                    "CS:L — подтверждение factory reset", MessageBoxButton.YesNo, MessageBoxImage.Stop) != MessageBoxResult.Yes) return;
-            await _profiles.ResetAllToFactoryFromGameInfoAsync(_gamePath);
+            if (WpfMessageBox.Show("Сбросить локальные настройки CS:L? Файлы игры и Steam не изменяются.",
+                    "CS:L — сброс настроек", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
             _settingsLoadFailed = false;
             SetPathText("");
             _savedExecutable = "";
@@ -345,20 +285,20 @@ public partial class MainWindow : Window
             _check = null;
             DiagnosticBox.IsChecked = false;
             SteamBox.IsChecked = true;
-            SetActiveProfile(ProfileCatalogService.BuiltInProfiles[0], applyProfileDefaults: true);
+            NovidBox.IsChecked = true;
+            ConsoleBox.IsChecked = true;
             UpdateExecutableOptions("");
             UpdatePlayState();
             await _settings.SaveAsync(new LauncherSettings());
-            _logger.Warning("Выполнен подтверждённый factory reset CS:L.");
-            WpfMessageBox.Show("Локальные настройки и профили сброшены. Резервные копии сохранены; игровые файлы не изменялись.",
-                "CS:L — factory reset", MessageBoxButton.OK, MessageBoxImage.Information);
+            _logger.Warning("Выполнен подтверждённый сброс настроек CS:L.");
+            WpfMessageBox.Show("Настройки CS:L сброшены. Игровые файлы не изменялись.",
+                "CS:L — сброс настроек", MessageBoxButton.OK, MessageBoxImage.Information);
             await RefreshRecoveryListsAsync();
         }
         catch (Exception ex)
         {
-            _logger.Error("Ошибка factory reset.", ex);
-            WpfMessageBox.Show($"Не удалось завершить factory reset. Проверьте состояние резервных копий.\n\n{ex.Message}",
-                "CS:L — factory reset", MessageBoxButton.OK, MessageBoxImage.Error);
+            _logger.Error("Ошибка сброса настроек.", ex);
+            WpfMessageBox.Show($"Не удалось сбросить настройки.\n\n{ex.Message}", "CS:L — сброс настроек", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 
@@ -589,50 +529,6 @@ public partial class MainWindow : Window
         }
     }
 
-    private void ProfileChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (!_syncingProfile && ProfileBox.SelectedItem is LauncherProfile profile)
-            SetActiveProfile(profile, applyProfileDefaults: true);
-    }
-
-    private void ProfilesList_SelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (!_syncingProfile && ProfilesList.SelectedItem is LauncherProfile profile)
-            SetActiveProfile(profile, applyProfileDefaults: true);
-    }
-
-    private void SetActiveProfile(LauncherProfile profile, bool applyProfileDefaults)
-    {
-        _profileSelection.Select(profile.Id);
-        _syncingProfile = true;
-        try
-        {
-            ProfileBox.SelectedItem = _activeProfile;
-            ProfilesList.SelectedItem = _activeProfile;
-        }
-        finally
-        {
-            _syncingProfile = false;
-        }
-        ProfileDescriptionText.Text = _activeProfile.Description;
-        if (applyProfileDefaults)
-        {
-            NovidBox.IsChecked = _activeProfile.Novid;
-            ConsoleBox.IsChecked = _activeProfile.Console;
-        }
-        _ = RefreshRecoveryListsAsync();
-        UpdatePlayState();
-    }
-
-    private void ApplyProfile_Click(object sender, RoutedEventArgs e)
-    {
-        if (ProfilesList.SelectedItem is LauncherProfile profile)
-        {
-            SetActiveProfile(profile, applyProfileDefaults: true);
-            HintText.Text = $"Профиль {_activeProfile.Name} выбран";
-        }
-    }
-
     private void UpdatePlayState()
     {
         var versionAllowsLaunch = _check?.Status == VersionStatus.Confirmed ||
@@ -646,12 +542,11 @@ public partial class MainWindow : Window
         if (DiagnosticBox.IsChecked == true) _logger.Warning("Диагностический режим включён.");
     }
 
-    private LaunchOptions BuildOptions() => ProfileLaunchOptionsBuilder.Build(
-        _activeProfile,
-        SteamBox.IsChecked == true,
-        NovidBox.IsChecked,
-        ConsoleBox.IsChecked,
-        string.IsNullOrWhiteSpace(_selectedExecutable) ? "" : Path.GetFileName(_selectedExecutable));
+    private LaunchOptions BuildOptions() => new(
+        Novid: NovidBox.IsChecked == true,
+        Console: ConsoleBox.IsChecked == true,
+        Steam: SteamBox.IsChecked == true,
+        Executable: string.IsNullOrWhiteSpace(_selectedExecutable) ? "" : Path.GetFileName(_selectedExecutable));
 
     private async void Play_Click(object sender, RoutedEventArgs e)
     {
@@ -683,29 +578,8 @@ public partial class MainWindow : Window
                 if (answer != MessageBoxResult.Yes) return;
             }
 
-            var existingProfile = _profiles.GetPath(_activeProfile.Id);
-            if (Directory.Exists(existingProfile))
-            {
-                var existingErrors = _profiles.ValidateProfile(existingProfile, _gamePath, requireGameStructure: true);
-                if (existingErrors.Count > 0 && WpfMessageBox.Show(
-                        "Профиль не прошёл проверку:\n" + string.Join("\n", existingErrors) +
-                        "\n\nСоздать заново по официальному cstrike/gameinfo.txt? Текущая папка будет сохранена для отката.",
-                        "CS:L — целостность профиля", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
-            }
-            var profilePath = await _profiles.PrepareFromGameInfoAsync(_gamePath, _activeProfile);
-            var profileDiagnostics = _profiles.ValidateProfileDetailed(profilePath, _gamePath, requireGameStructure: true);
-            foreach (var warning in profileDiagnostics.Warnings) _logger.Warning(warning);
-            _logger.Info("SearchPaths из профиля:\n" + string.Join("\n", profileDiagnostics.SearchPaths));
-            _logger.Info("VPK в cstrike:\n" + (profileDiagnostics.CstrikeVpkFiles.Count == 0
-                ? "(нет файлов *.vpk)"
-                : string.Join("\n", profileDiagnostics.CstrikeVpkFiles)));
-            if (profileDiagnostics.Errors.Count > 0)
-                throw new InvalidDataException("Профиль не прошёл финальную проверку:\n" + string.Join("\n", profileDiagnostics.Errors));
-            var gameRoot = Path.GetFullPath(_gamePath).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
-            var fullProfilePath = Path.GetFullPath(profilePath);
-            if (fullProfilePath.StartsWith(gameRoot, StringComparison.OrdinalIgnoreCase))
-                throw new InvalidDataException("Путь профиля неожиданно находится внутри папки игры. Запуск отменён, игровые файлы не изменялись.");
-            await new GameLauncher().LaunchAsync(_gamePath, profilePath, BuildOptions(), _logger.Info);
+            _logger.Info("Запуск выполняется с официальным cstrike\\gameinfo.txt; пользовательские игровые файлы не изменяются.");
+            await new GameLauncher().LaunchAsync(_gamePath, BuildOptions(), _logger.Info);
         }
         catch (Exception ex)
         {
@@ -764,7 +638,7 @@ public partial class MainWindow : Window
         DiagnosticStatusText.Text = "Создаём архив в фоновом потоке...";
         try
         {
-            var archive = await _diagnostics.CreateAsync(_gamePath, _activeProfile.Id);
+            var archive = await _diagnostics.CreateAsync(_gamePath);
             DiagnosticStatusText.Text = $"Создан архив: {archive.ArchivePath} ({archive.FilesIncluded} файлов)";
         }
         catch (Exception ex)

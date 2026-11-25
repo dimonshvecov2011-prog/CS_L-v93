@@ -253,7 +253,7 @@
                         <StackPanel DockPanel.Dock="Bottom">
                             <TextBlock x:Name="LauncherVersionText" Text="CS:L v0.3.6-rc2" FontSize="10"
                                        Foreground="{StaticResource MutedBrush}" Margin="0,0,0,5" />
-                            <TextBlock Text="Профили фиксированы проектом. Пользовательские модификации не устанавливаются."
+                            <TextBlock Text="CS:L не изменяет файлы Steam и запускает официальную установку."
                                        FontSize="9" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" />
                         </StackPanel>
                         <StackPanel VerticalAlignment="Top">
@@ -268,7 +268,7 @@
                                                Foreground="{StaticResource AccentBrush}" Margin="0,4,0,0" />
                                 </StackPanel>
                             </Border>
-                            <TextBlock Text="УСТАНОВКА" FontSize="9" FontWeight="Bold"
+                            <TextBlock Text="УСТАНОВКА ИГРЫ" FontSize="9" FontWeight="Bold"
                                        Foreground="{StaticResource MutedBrush}" Margin="2,17,0,7" />
                             <TextBlock Text="Игра устанавливается официальным клиентом Steam. CS:L не копирует и не изменяет игровые файлы."
                                        FontSize="10" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" />
@@ -328,12 +328,12 @@
                                     <Border Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrushSoft}"
                                             BorderThickness="1" CornerRadius="12" Padding="13" Margin="0,0,0,10">
                                         <StackPanel>
-                                            <TextBlock Text="АКТИВНЫЙ ПРОФИЛЬ" FontSize="9" FontWeight="Bold"
+                                            <TextBlock Text="ЗАПУСК CS:S" FontSize="9" FontWeight="Bold"
                                                        Foreground="{StaticResource AccentBrush}" />
-                                            <ComboBox x:Name="ProfileBox" Width="250" HorizontalAlignment="Left"
-                                                      Margin="0,8,0,5" SelectionChanged="ProfileChanged" />
-                                            <TextBlock x:Name="ProfileDescriptionText" Foreground="{StaticResource MutedBrush}"
-                                                       FontSize="11" TextWrapping="Wrap" />
+                                            <TextBlock Text="Официальные файлы игры без копирования и подмены gameinfo.txt"
+                                                       FontSize="14" FontWeight="SemiBold" Margin="0,5,0,3" TextWrapping="Wrap" />
+                                            <TextBlock Text="Лаунчер запускает выбранный exe напрямую с официальным cstrike/gameinfo.txt. Настройки запуска сохраняются отдельно."
+                                                       Foreground="{StaticResource MutedBrush}" FontSize="10" TextWrapping="Wrap" />
                                         </StackPanel>
                                     </Border>
                                     <Grid>
@@ -346,11 +346,11 @@
                                                 BorderBrush="{StaticResource BorderBrushSoft}" BorderThickness="1"
                                                 CornerRadius="12" Padding="13">
                                             <StackPanel>
-                                                <TextBlock Text="ПРЕСЕТЫ CS:L" FontSize="9" FontWeight="Bold"
+                                                <TextBlock Text="ПАРАМЕТРЫ ЗАПУСКА" FontSize="9" FontWeight="Bold"
                                                            Foreground="{StaticResource BlueBrush}" />
-                                                <TextBlock Text="Фиксированные настройки" FontSize="14"
+                                                <TextBlock Text="Обычный запуск игры" FontSize="14"
                                                            FontWeight="SemiBold" Margin="0,5,0,3" TextWrapping="Wrap" />
-                                                <TextBlock Text="Профили управляют только настройками запуска проекта. Сторонние изменения не устанавливаются."
+                                                <TextBlock Text="Флажки запуска находятся в нижней панели. CS:L не копирует и не изменяет файлы Steam."
                                                            Foreground="{StaticResource MutedBrush}" FontSize="10"
                                                            TextWrapping="Wrap" />
                                             </StackPanel>
@@ -370,32 +370,6 @@
                                             </StackPanel>
                                         </Border>
                                     </Grid>
-                                </StackPanel>
-                            </ScrollViewer>
-                        </TabItem>
-
-                        <TabItem Header="Профили">
-                            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                                <StackPanel Margin="3,10,5,8">
-                                    <TextBlock Text="ПРОФИЛИ CS:L" FontSize="9" FontWeight="Bold"
-                                               Foreground="{StaticResource AccentBrush}" />
-                                    <TextBlock Text="Выберите один из утверждённых пресетов лаунчера."
-                                               FontSize="14" FontWeight="SemiBold" Margin="0,5,0,10"
-                                               TextWrapping="Wrap" />
-                                    <ListView x:Name="ProfilesList" Height="160"
-                                              SelectionChanged="ProfilesList_SelectionChanged">
-                                        <ListView.ItemTemplate>
-                                            <DataTemplate>
-                                                <StackPanel>
-                                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="12" />
-                                                    <TextBlock Text="{Binding Description}" Foreground="{StaticResource MutedBrush}"
-                                                               FontSize="10" TextWrapping="Wrap" Margin="0,3,0,0" />
-                                                </StackPanel>
-                                            </DataTemplate>
-                                        </ListView.ItemTemplate>
-                                    </ListView>
-                                    <Button Content="Применить профиль" Click="ApplyProfile_Click"
-                                            HorizontalAlignment="Left" Margin="0,10,0,0" />
                                 </StackPanel>
                             </ScrollViewer>
                         </TabItem>
@@ -451,7 +425,7 @@
                                                        Foreground="{StaticResource AccentBrush}" />
                                             <TextBlock Text="Соберите материалы для поиска проблемы" FontSize="15"
                                                        FontWeight="SemiBold" Margin="0,5,0,6" TextWrapping="Wrap" />
-                                            <TextBlock Text="ZIP включает настройки и логи CS:L, выбранный профиль и отдельные сведения о версии Steam. Игровые файлы Valve в архив не добавляются. Перед отправкой откройте архив и проверьте, что он не содержит нежелательных личных данных."
+                                            <TextBlock Text="ZIP включает настройки и логи CS:L, а также отдельные сведения о версии Steam. Игровые файлы Valve в архив не добавляются. Перед отправкой откройте архив и проверьте, что он не содержит нежелательных личных данных."
                                                        Foreground="{StaticResource MutedBrush}" FontSize="10" TextWrapping="Wrap" />
                                             <Button x:Name="CreateDiagnosticButton" Content="Создать ZIP-архив"
                                                     Click="CreateDiagnostic_Click" HorizontalAlignment="Left"
@@ -500,28 +474,6 @@
                                         </StackPanel>
                                     </Border>
                                     <Border Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrushSoft}"
-                                            BorderThickness="1" CornerRadius="12" Padding="13" Margin="0,0,0,10">
-                                        <StackPanel>
-                                            <TextBlock Text="BACKUP И ОТКАТ ПРОФИЛЯ" FontSize="9" FontWeight="Bold"
-                                                       Foreground="{StaticResource BlueBrush}" />
-                                            <TextBlock Text="Перед генерацией профиль сохраняется в AppData. Здесь можно восстановить предыдущую версию или пересоздать профиль по шаблону проекта."
-                                                       FontSize="10" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,5,0,7" />
-                                            <ListView x:Name="ProfileBackupsList" Height="90">
-                                                <ListView.ItemTemplate>
-                                                    <DataTemplate>
-                                                        <TextBlock Text="{Binding CreatedUtc, StringFormat={}{0:yyyy-MM-dd HH:mm:ss} UTC}" FontSize="10" />
-                                                    </DataTemplate>
-                                                </ListView.ItemTemplate>
-                                            </ListView>
-                                            <WrapPanel Margin="0,8,0,0">
-                                                <Button x:Name="RollbackProfileButton" Content="Откатить профиль"
-                                                        Click="RollbackProfile_Click" />
-                                                <Button x:Name="ResetProfileButton" Content="Сбросить профиль до заводского"
-                                                        Click="ResetProfile_Click" />
-                                            </WrapPanel>
-                                        </StackPanel>
-                                    </Border>
-                                    <Border Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrushSoft}"
                                             BorderThickness="1" CornerRadius="12" Padding="13">
                                         <StackPanel>
                                             <TextBlock Text="ВОССТАНОВЛЕНИЕ ПОСЛЕ СБОЯ" FontSize="9" FontWeight="Bold"
@@ -530,7 +482,7 @@
                                                        FontSize="10" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,5,0,8" />
                                             <WrapPanel>
                                                 <Button Content="Создать диагностический архив" Click="CreateDiagnostic_Click" />
-                                                <Button Content="Сбросить всё к заводским настройкам" Click="ResetEverything_Click"
+                                                <Button Content="Сбросить настройки CS:L" Click="ResetEverything_Click"
                                                         Background="#4A2C2C" />
                                             </WrapPanel>
                                         </StackPanel>

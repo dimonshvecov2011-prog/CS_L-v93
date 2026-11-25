@@ -153,446 +153,7 @@ public class CoreTests
     }
 
     [Fact]
-    public void ProfileLaunchBuilderAppliesAllProfileFieldsAndOverrides()
-    {
-        var profile = new LauncherProfile("test", "Test", "description", Novid: false, Console: true,
-            Windowed: true, Noborder: true, Extra: "-custom value");
-        var defaults = ProfileLaunchOptionsBuilder.Build(profile, steam: true, executable: "hl2.exe");
-        Assert.False(defaults.Novid);
-        Assert.True(defaults.Console);
-        Assert.True(defaults.Windowed);
-        Assert.True(defaults.Noborder);
-        Assert.Equal("-custom value", defaults.Extra);
-        Assert.True(defaults.Steam);
-        Assert.Equal("hl2.exe", defaults.Executable);
-
-        var overrides = ProfileLaunchOptionsBuilder.Build(profile, steam: false, novidOverride: true, consoleOverride: false);
-        Assert.True(overrides.Novid);
-        Assert.False(overrides.Console);
-        Assert.True(overrides.Windowed);
-        Assert.True(overrides.Noborder);
-        Assert.Equal("-custom value", overrides.Extra);
-        Assert.False(overrides.Steam);
-    }
-
-    [Fact]
-    public void UnknownProfileIdFallsBackToClassic()
-    {
-        var temp = TempDirectory("CssProfileCatalog");
-        try
-        {
-            var service = new ProfileCatalogService(temp);
-            Assert.Equal("classic", service.Get("not-a-profile").Id);
-            Assert.Equal("classic", new ProfileSelectionState(ProfileCatalogService.BuiltInProfiles, "not-a-profile").ActiveProfile.Id);
-        }
-        finally { DeleteDirectory(temp); }
-    }
-
-    [Fact]
-    public void OverviewAndProfilesSelectionsShareOneActiveProfileState()
-    {
-        var state = new ProfileSelectionState(ProfileCatalogService.BuiltInProfiles, "classic");
-
-        // Both WPF selection handlers route through SetActiveProfile -> Select(id).
-        Assert.Equal("modern", state.Select("modern").Id);
-        Assert.Equal("modern", state.ActiveProfile.Id);
-        Assert.Equal("competitive", state.Select("competitive").Id);
-        Assert.Equal("competitive", state.ActiveProfile.Id);
-    }
-
-    [Fact]
-    public async Task ProfileCatalogServicePreparesTheProfileUsedByTheWindow()
-    {
-        var app = TempDirectory("CssCatalogProfileApp");
-        var game = TempDirectory("Игра с пробелом");
-        try
-        {
-            Directory.CreateDirectory(Path.Combine(game, "base"));
-            var template = await WriteProfileTemplate(app, "v1");
-            var service = new ProfileCatalogService(app);
-            var profile = service.Get("modern");
-            var profilePath = await service.PrepareAsync(game, profile, template);
-            var reusedPath = await service.PrepareAsync(game, profile, template);
-
-            Assert.True(Directory.Exists(Path.Combine(profilePath, "custom")));
-            Assert.Equal(profilePath, reusedPath);
-            Assert.Empty(service.GetBackups("modern"));
-            Assert.Contains(game.Replace("\\", "/"), await File.ReadAllTextAsync(Path.Combine(profilePath, "gameinfo.txt")));
-            Assert.Contains("modern", await File.ReadAllTextAsync(Path.Combine(profilePath, "profile.json")));
-            Assert.False(File.Exists(Path.Combine(game, "gameinfo.txt")));
-        }
-        finally { DeleteDirectory(app); DeleteDirectory(game); }
-    }
-
-    [Fact]
-    public async Task ProfileCatalogCopiesOfficialSearchPathsAndAcceptsVpkDirectoryVariant()
-    {
-        var app = TempDirectory("CssOfficialGameInfoApp");
-        var library = TempDirectory("CssOfficialGameInfoGame");
-        try
-        {
-            var game = Path.Combine(library, "steamapps", "common", "Counter-Strike Source");
-            Directory.CreateDirectory(Path.Combine(game, "cstrike"));
-            Directory.CreateDirectory(Path.Combine(game, "cstrike", "bin"));
-            Directory.CreateDirectory(Path.Combine(game, "hl2"));
-            Directory.CreateDirectory(Path.Combine(game, "platform"));
-            await File.WriteAllTextAsync(Path.Combine(game, "cstrike", "cstrike_pak_dir.vpk"), "vpk");
-            await File.WriteAllTextAsync(Path.Combine(game, "cstrike", "cstrike_pak_000.vpk"), "vpk");
-            await File.WriteAllTextAsync(Path.Combine(game, "hl2", "hl2_misc_dir.vpk"), "vpk");
-            await File.WriteAllTextAsync(Path.Combine(game, "platform", "platform_misc_dir.vpk"), "vpk");
-            await File.WriteAllTextAsync(Path.Combine(game, "cstrike", "gameinfo.txt"), """
-                "GameInfo"
-                {
-                    game "Counter-Strike: Source"
-                    FileSystem
-                    {
-                        SteamAppId 240
-                        SearchPaths
-                        {
-                            game+mod+custom_mod   |gameinfo_path|custom/*
-                            game+mod              |all_source_engine_paths|cstrike/cstrike_pak.vpk
-                            game                  |all_source_engine_paths|cstrike/cstrike_pak_000.vpk
-                            game                  |all_source_engine_paths|hl2/hl2_misc.vpk
-                            platform              |all_source_engine_paths|platform/platform_misc.vpk
-                            game+download         |all_source_engine_paths|cstrike/download
-                        }
-                    }
-                }
-                """);
-
-            var service = new ProfileCatalogService(app);
-            var profilePath = await service.PrepareFromGameInfoAsync(game, service.Get("classic"));
-            var generated = await File.ReadAllTextAsync(Path.Combine(profilePath, "gameinfo.txt"));
-            var normalizedGame = Path.GetFullPath(game).Replace('\\', '/');
-
-            Assert.Contains($"{normalizedGame}/cstrike/cstrike_pak.vpk", generated);
-            Assert.Contains($"{normalizedGame}/cstrike/cstrike_pak_000.vpk", generated);
-            Assert.Contains($"{normalizedGame}/hl2/hl2_misc.vpk", generated);
-            Assert.Contains($"{normalizedGame}/platform/platform_misc.vpk", generated);
-            Assert.Contains("game+mod+custom_mod", generated);
-            Assert.Contains(Path.Combine(profilePath, "custom").Replace('\\', '/'), generated);
-            Assert.Empty(service.ValidateProfile(profilePath, game));
-        }
-        finally { DeleteDirectory(app); DeleteDirectory(library); }
-    }
-
-    [Fact]
-    public async Task ProfileGenerationFailsClearlyWhenOfficialGameInfoIsMissing()
-    {
-        var app = TempDirectory("CssMissingOfficialGameInfoApp");
-        var game = TempDirectory("CssMissingOfficialGameInfoGame");
-        try
-        {
-            Directory.CreateDirectory(Path.Combine(game, "cstrike"));
-            var service = new ProfileCatalogService(app);
-            var error = await Assert.ThrowsAsync<FileNotFoundException>(() =>
-                service.PrepareFromGameInfoAsync(game, service.Get("classic")));
-            Assert.True(error.FileName is not null && error.FileName.Contains(Path.Combine("cstrike", "gameinfo.txt"), StringComparison.OrdinalIgnoreCase));
-            Assert.False(Directory.Exists(service.GetPath("classic")));
-        }
-        finally { DeleteDirectory(app); DeleteDirectory(game); }
-    }
-
-    [Fact]
-    public async Task ProfileCatalogHandlesTypicalOfficialRelativeSearchPaths()
-    {
-        var app = TempDirectory("CssTypicalGameInfoApp");
-        var game = TempDirectory("CssTypicalGameInfoGame");
-        try
-        {
-            Directory.CreateDirectory(Path.Combine(game, "cstrike", "bin"));
-            Directory.CreateDirectory(Path.Combine(game, "hl2"));
-            Directory.CreateDirectory(Path.Combine(game, "platform"));
-            await File.WriteAllTextAsync(Path.Combine(game, "cstrike", "cstrike_pak_dir.vpk"), "vpk");
-            await File.WriteAllTextAsync(Path.Combine(game, "hl2", "hl2_misc_dir.vpk"), "vpk");
-            await File.WriteAllTextAsync(Path.Combine(game, "cstrike", "gameinfo.txt"), """
-                "GameInfo"
-                {
-                    game "Counter-Strike: Source"
-                    FileSystem
-                    {
-                        SteamAppId 240
-                        SearchPaths
-                        {
-                            game+mod+custom_mod   |gameinfo_path|custom/*
-                            game+mod              |gameinfo_path|.
-                            game                  |gameinfo_path|bin
-                            game+download         |gameinfo_path|download
-                            game                  cstrike/cstrike_pak.vpk
-                            game                  |all_source_engine_paths|hl2/hl2_misc.vpk
-                        }
-                    }
-                }
-                """);
-
-            var service = new ProfileCatalogService(app);
-            var profilePath = await service.PrepareFromGameInfoAsync(game, service.Get("classic"));
-            var generated = await File.ReadAllTextAsync(Path.Combine(profilePath, "gameinfo.txt"));
-            var normalizedGame = Path.GetFullPath(game).Replace('\\', '/');
-
-            Assert.Contains($"{normalizedGame}/cstrike/bin", generated);
-            Assert.Contains($"{normalizedGame}/cstrike/cstrike_pak.vpk", generated);
-            Assert.Contains($"{normalizedGame}/hl2/hl2_misc.vpk", generated);
-            Assert.Empty(service.ValidateProfile(profilePath, game));
-        }
-        finally { DeleteDirectory(app); DeleteDirectory(game); }
-    }
-
-    [Fact]
-    public async Task MissingLanguageVpkIsWarningButDoesNotBlockProfile()
-    {
-        var app = TempDirectory("CssLanguageVpkApp");
-        var game = TempDirectory("CssLanguageVpkGame");
-        try
-        {
-            Directory.CreateDirectory(Path.Combine(game, "cstrike", "bin"));
-            Directory.CreateDirectory(Path.Combine(game, "hl2"));
-            Directory.CreateDirectory(Path.Combine(game, "platform"));
-            await File.WriteAllTextAsync(Path.Combine(game, "cstrike", "cstrike_pak_dir.vpk"), "vpk");
-            await File.WriteAllTextAsync(Path.Combine(game, "cstrike", "gameinfo.txt"), """
-                "GameInfo"
-                {
-                    FileSystem
-                    {
-                        SearchPaths
-                        {
-                            game+mod              |gameinfo_path|.
-                            game                  |gameinfo_path|cstrike_pak.vpk
-                            game                  |gameinfo_path|cstrike_english.vpk
-                        }
-                    }
-                }
-                """);
-
-            var service = new ProfileCatalogService(app);
-            var profilePath = await service.PrepareFromGameInfoAsync(game, service.Get("classic"));
-            var diagnostics = service.ValidateProfileDetailed(profilePath, game, requireGameStructure: true);
-
-            Assert.Empty(diagnostics.Errors);
-            var warning = Assert.Single(diagnostics.Warnings);
-            Assert.Contains("cstrike_english.vpk", warning);
-            Assert.Contains("вероятно, языковой пакет", warning);
-        }
-        finally { DeleteDirectory(app); DeleteDirectory(game); }
-    }
-
-    [Fact]
-    public async Task MissingBaseVpkBlocksOfficialProfile()
-    {
-        var app = TempDirectory("CssMissingBaseVpkApp");
-        var game = TempDirectory("CssMissingBaseVpkGame");
-        try
-        {
-            Directory.CreateDirectory(Path.Combine(game, "cstrike", "bin"));
-            Directory.CreateDirectory(Path.Combine(game, "hl2"));
-            Directory.CreateDirectory(Path.Combine(game, "platform"));
-            await File.WriteAllTextAsync(Path.Combine(game, "cstrike", "gameinfo.txt"), """
-                "GameInfo"
-                {
-                    FileSystem
-                    {
-                        SearchPaths
-                        {
-                            game+mod |gameinfo_path|.
-                            game     |gameinfo_path|cstrike_pak.vpk
-                        }
-                    }
-                }
-                """);
-
-            var service = new ProfileCatalogService(app);
-            var error = await Assert.ThrowsAsync<InvalidDataException>(() =>
-                service.PrepareFromGameInfoAsync(game, service.Get("classic")));
-            Assert.Contains("Игра установлена неполностью", error.Message);
-        }
-        finally { DeleteDirectory(app); DeleteDirectory(game); }
-    }
-
-    [Fact]
-    public async Task ProfileGenerationKeepsPreviousValidVersionAndRollbackRestoresIt()
-    {
-        var app = TempDirectory("CssProfileRollbackApp");
-        var game = TempDirectory("CssProfileRollbackGame");
-        try
-        {
-            Directory.CreateDirectory(Path.Combine(game, "base"));
-            var template = await WriteProfileTemplate(app, "version-one");
-            var service = new ProfileCatalogService(app);
-            var original = await service.PrepareAsync(game, service.Get("classic"), template);
-            Directory.CreateDirectory(Path.Combine(original, "cfg"));
-            await File.WriteAllTextAsync(Path.Combine(original, "cfg", "user-created.cfg"), "keep this config");
-            await File.WriteAllTextAsync(Path.Combine(original, "custom", "user-resource.txt"), "keep this resource");
-            await File.WriteAllTextAsync(template, MakeProfileTemplate("version-two"));
-            var regenerated = await service.PrepareAsync(game, service.Get("classic"), template);
-
-            var backup = Assert.Single(service.GetBackups("classic"));
-            Assert.Equal("keep this config", await File.ReadAllTextAsync(Path.Combine(regenerated, "cfg", "user-created.cfg")));
-            Assert.Equal("keep this resource", await File.ReadAllTextAsync(Path.Combine(regenerated, "custom", "user-resource.txt")));
-            Assert.Contains("version-two", await File.ReadAllTextAsync(Path.Combine(service.GetPath("classic"), "gameinfo.txt")));
-            var restoredPath = await service.RollbackAsync("classic", backup.Path, game);
-            Assert.Contains("version-one", await File.ReadAllTextAsync(Path.Combine(restoredPath, "gameinfo.txt")));
-            Assert.True(Directory.Exists(original));
-        }
-        finally { DeleteDirectory(app); DeleteDirectory(game); }
-    }
-
-    [Fact]
-    public async Task FactoryResetCreatesCleanProfileAndKeepsOldFilesInBackup()
-    {
-        var app = TempDirectory("CssProfileFactoryResetApp");
-        var game = TempDirectory("CssProfileFactoryResetGame");
-        try
-        {
-            Directory.CreateDirectory(Path.Combine(game, "base"));
-            var template = await WriteProfileTemplate(app, "factory");
-            var service = new ProfileCatalogService(app);
-            var path = await service.PrepareAsync(game, service.Get("classic"), template);
-            Directory.CreateDirectory(Path.Combine(path, "cfg"));
-            await File.WriteAllTextAsync(Path.Combine(path, "cfg", "user.cfg"), "keep in backup");
-            await File.WriteAllTextAsync(Path.Combine(path, "custom", "user.asset"), "keep in backup");
-
-            var resetPath = await service.ResetToFactoryAsync(game, "classic", template);
-
-            Assert.Equal(path, resetPath);
-            Assert.False(File.Exists(Path.Combine(resetPath, "cfg", "user.cfg")));
-            Assert.False(File.Exists(Path.Combine(resetPath, "custom", "user.asset")));
-            var backup = Assert.Single(service.GetBackups("classic"));
-            Assert.Equal("keep in backup", await File.ReadAllTextAsync(Path.Combine(backup.Path, "cfg", "user.cfg")));
-            Assert.Equal("keep in backup", await File.ReadAllTextAsync(Path.Combine(backup.Path, "custom", "user.asset")));
-        }
-        finally { DeleteDirectory(app); DeleteDirectory(game); }
-    }
-
-    [Fact]
-    public async Task InvalidProfileTemplateDoesNotReplaceExistingProfile()
-    {
-        var app = TempDirectory("CssProfileInvalidTemplateApp");
-        var game = TempDirectory("CssProfileInvalidTemplateGame");
-        try
-        {
-            Directory.CreateDirectory(Path.Combine(game, "base"));
-            var template = await WriteProfileTemplate(app, "known-good");
-            var service = new ProfileCatalogService(app);
-            var profilePath = await service.PrepareAsync(game, service.Get("classic"), template);
-            var original = await File.ReadAllTextAsync(Path.Combine(profilePath, "gameinfo.txt"));
-            await File.WriteAllTextAsync(template, "missing search paths {GAME_ROOT}");
-
-            await Assert.ThrowsAsync<InvalidDataException>(() => service.PrepareAsync(game, service.Get("classic"), template));
-
-            await File.WriteAllTextAsync(template, "SearchPaths { game \"unresolved\" }");
-            await Assert.ThrowsAsync<InvalidDataException>(() => service.PrepareAsync(game, service.Get("classic"), template));
-
-            await File.WriteAllTextAsync(template,
-                "\"GameInfo\"\n{\n  FileSystem\n  {\n    SteamAppId 240\n  }\n  Other\n  {\n    game \"{GAME_ROOT}/base\"\n  }\n}");
-            await Assert.ThrowsAsync<InvalidDataException>(() => service.PrepareAsync(game, service.Get("classic"), template));
-
-            Assert.Equal(original, await File.ReadAllTextAsync(Path.Combine(profilePath, "gameinfo.txt")));
-            Assert.Empty(service.GetBackups("classic"));
-        }
-        finally { DeleteDirectory(app); DeleteDirectory(game); }
-    }
-
-    [Fact]
-    public async Task InvalidProfileBackupIsRejectedBeforeActiveProfileMoves()
-    {
-        var app = TempDirectory("CssProfileInvalidBackupApp");
-        var game = TempDirectory("CssProfileInvalidBackupGame");
-        try
-        {
-            Directory.CreateDirectory(Path.Combine(game, "base"));
-            var template = await WriteProfileTemplate(app, "active-version");
-            var service = new ProfileCatalogService(app);
-            var activePath = await service.PrepareAsync(game, service.Get("classic"), template);
-            await File.WriteAllTextAsync(template, MakeProfileTemplate("candidate-backup"));
-            await service.PrepareAsync(game, service.Get("classic"), template);
-            var backup = Assert.Single(service.GetBackups("classic"));
-            await File.WriteAllTextAsync(Path.Combine(backup.Path, "gameinfo.txt"), "not a valid profile");
-            var activeText = await File.ReadAllTextAsync(Path.Combine(activePath, "gameinfo.txt"));
-
-            await Assert.ThrowsAsync<InvalidDataException>(() => service.RollbackAsync("classic", backup.Path, game));
-
-            Assert.Equal(activeText, await File.ReadAllTextAsync(Path.Combine(activePath, "gameinfo.txt")));
-            Assert.True(Directory.Exists(backup.Path));
-        }
-        finally { DeleteDirectory(app); DeleteDirectory(game); }
-    }
-
-    [Fact]
-    public async Task CancelledProfileGenerationKeepsLastGoodProfileAndCleansStaging()
-    {
-        var app = TempDirectory("CssProfileCancelledApp");
-        var game = TempDirectory("CssProfileCancelledGame");
-        try
-        {
-            Directory.CreateDirectory(Path.Combine(game, "base"));
-            var template = await WriteProfileTemplate(app, "kept");
-            var service = new ProfileCatalogService(app);
-            var profilePath = await service.PrepareAsync(game, service.Get("classic"), template);
-            var original = await File.ReadAllTextAsync(Path.Combine(profilePath, "gameinfo.txt"));
-            using var cancellation = new CancellationTokenSource();
-            cancellation.Cancel();
-
-            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => service.PrepareAsync(
-                game, service.Get("classic"), template, cancellation.Token));
-
-            Assert.Equal(original, await File.ReadAllTextAsync(Path.Combine(profilePath, "gameinfo.txt")));
-            Assert.Empty(Directory.GetDirectories(Path.GetDirectoryName(profilePath)!, "classic.staging-*"));
-        }
-        finally { DeleteDirectory(app); DeleteDirectory(game); }
-    }
-
-    [Fact]
-    public async Task ProfileCatalogRejectsSymlinkedProfileRootOutsideLauncherData()
-    {
-        var app = TempDirectory("CssProfileSymlinkApp");
-        var external = TempDirectory("CssProfileSymlinkExternal");
-        var game = TempDirectory("CssProfileSymlinkGame");
-        try
-        {
-            Directory.CreateDirectory(Path.Combine(app, "CssLauncher"));
-            Directory.CreateDirectory(Path.Combine(game, "base"));
-            await File.WriteAllTextAsync(Path.Combine(external, "sentinel.txt"), "keep");
-            try { Directory.CreateSymbolicLink(Path.Combine(app, "CssLauncher", "profiles"), external); }
-            catch (Exception ex) when (ex is UnauthorizedAccessException or PlatformNotSupportedException or IOException) { return; }
-            var template = await WriteProfileTemplate(app, "safe");
-
-            await Assert.ThrowsAsync<InvalidDataException>(() => new ProfileCatalogService(app)
-                .PrepareAsync(game, new ProfileCatalogService(app).Get("classic"), template));
-
-            Assert.Equal("keep", await File.ReadAllTextAsync(Path.Combine(external, "sentinel.txt")));
-        }
-        finally { DeleteDirectory(app); DeleteDirectory(external); DeleteDirectory(game); }
-    }
-
-    [Fact]
-    public async Task FactoryResetRejectsSymlinkedBackupRootWithoutMovingProfile()
-    {
-        var app = TempDirectory("CssProfileBackupSymlinkApp");
-        var external = TempDirectory("CssProfileBackupSymlinkExternal");
-        var game = TempDirectory("CssProfileBackupSymlinkGame");
-        try
-        {
-            Directory.CreateDirectory(Path.Combine(game, "base"));
-            await File.WriteAllTextAsync(Path.Combine(external, "sentinel.txt"), "keep");
-            var template = await WriteProfileTemplate(app, "safe-profile");
-            var service = new ProfileCatalogService(app);
-            var profilePath = await service.PrepareAsync(game, service.Get("classic"), template);
-            Directory.CreateSymbolicLink(Path.Combine(app, "CssLauncher", "backups"), external);
-
-            await Assert.ThrowsAsync<InvalidDataException>(() => service.ResetAllToFactoryAsync(null, template));
-
-            Assert.True(Directory.Exists(profilePath));
-            Assert.Equal("keep", await File.ReadAllTextAsync(Path.Combine(external, "sentinel.txt")));
-        }
-        catch (Exception ex) when (ex is UnauthorizedAccessException or PlatformNotSupportedException or IOException)
-        {
-            return;
-        }
-        finally { DeleteDirectory(app); DeleteDirectory(external); DeleteDirectory(game); }
-    }
-
-    [Fact]
-    public async Task SettingsRoundTripPersistsProfileAndExecutableAtomically()
+    public async Task SettingsRoundTripPersistsExecutableAtomically()
     {
         var temp = TempDirectory("CssSettingsRoundTrip");
         try
@@ -602,14 +163,12 @@ public class CoreTests
                 Novid: false, Console: true, Windowed: true, Noborder: true, Extra: "-freq 144", Steam: true, Executable: "hl2.exe"), true)
             {
                 SchemaVersion = 1,
-                ProfileId = "competitive",
                 Executable = "hl2.exe"
             };
             await service.SaveAsync(settings);
             var loaded = await service.LoadAsync();
 
             Assert.Equal(settings.GamePath, loaded.GamePath);
-            Assert.Equal("competitive", loaded.ProfileId);
             Assert.Equal("hl2.exe", loaded.Executable);
             Assert.False(loaded.EffectiveLaunchOptions.Novid);
             Assert.True(loaded.EffectiveLaunchOptions.Windowed);
@@ -779,7 +338,6 @@ public class CoreTests
         try
         {
             var settings = await new JsonSettingsService(temp).LoadAsync();
-            Assert.Equal("classic", settings.ProfileId);
             Assert.True(File.Exists(Path.Combine(temp, "CssLauncher", "settings.json")));
         }
         finally { DeleteDirectory(temp); }
@@ -1269,14 +827,14 @@ public class CoreTests
         try
         {
             var game = Path.Combine(temp, "game");
-            var profile = Path.Combine(temp, "profile");
             Directory.CreateDirectory(game);
-            Directory.CreateDirectory(profile);
+            Directory.CreateDirectory(Path.Combine(game, "cstrike"));
+            await File.WriteAllTextAsync(Path.Combine(game, "cstrike", "gameinfo.txt"), "GameInfo");
             await File.WriteAllTextAsync(Path.Combine(game, "cstrike.exe"), "not launched");
             await File.WriteAllTextAsync(Path.Combine(temp, "outside.exe"), "not launched");
 
             await Assert.ThrowsAsync<ArgumentException>(() => new GameLauncher().LaunchAsync(
-                game, profile, new LaunchOptions(Executable: "../outside.exe", Steam: false)));
+                game, new LaunchOptions(Executable: "../outside.exe", Steam: false)));
         }
         finally { DeleteDirectory(temp); }
     }
@@ -1288,10 +846,10 @@ public class CoreTests
         try
         {
             var game = Path.Combine(temp, "game");
-            var profile = Path.Combine(temp, "profile");
             var outside = Path.Combine(temp, "outside.exe");
             Directory.CreateDirectory(game);
-            Directory.CreateDirectory(profile);
+            Directory.CreateDirectory(Path.Combine(game, "cstrike"));
+            await File.WriteAllTextAsync(Path.Combine(game, "cstrike", "gameinfo.txt"), "GameInfo");
             await File.WriteAllTextAsync(outside, "not launched");
             try { File.CreateSymbolicLink(Path.Combine(game, "cstrike.exe"), outside); }
             catch (Exception ex) when (ex is UnauthorizedAccessException or PlatformNotSupportedException or IOException)
@@ -1300,7 +858,7 @@ public class CoreTests
             }
 
             var error = await Assert.ThrowsAsync<ArgumentException>(() => new GameLauncher().LaunchAsync(
-                game, profile, new LaunchOptions(Executable: "cstrike.exe", Steam: false)));
+                game, new LaunchOptions(Executable: "cstrike.exe", Steam: false)));
             Assert.Contains("ссылки", error.Message);
         }
         finally { DeleteDirectory(temp); }
@@ -1408,16 +966,6 @@ public class CoreTests
         return new LauncherUpdateManifest(1, "0.3.5", "https://fake-channel.invalid/CSL.zip",
             Convert.ToHexString(SHA256.HashData(bytes)), bytes.LongLength);
     }
-
-    private static async Task<string> WriteProfileTemplate(string app, string version)
-    {
-        var path = Path.Combine(app, "gameinfo.template.txt");
-        await File.WriteAllTextAsync(path, MakeProfileTemplate(version));
-        return path;
-    }
-
-    private static string MakeProfileTemplate(string version) =>
-        "\"GameInfo\"\n{\n FileSystem\n {\n  SearchPaths\n  {\n   game \"{GAME_ROOT}/base\"\n  }\n }\n}\n// " + version;
 
     private static string TempDirectory(string prefix)
     {

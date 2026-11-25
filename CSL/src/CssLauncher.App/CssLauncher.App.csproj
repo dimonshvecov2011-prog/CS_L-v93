@@ -22,6 +22,5 @@
     <None Include="../../config/version-manifest.v93.json" Link="config/version-manifest.v93.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../../config/servers.example.json" Link="config/servers.example.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../../config/launcher-update.json" Link="config/launcher-update.json" CopyToOutputDirectory="PreserveNewest" />
-    <None Include="../../templates/gameinfo.template.txt" Link="templates/gameinfo.template.txt" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

@@ -1,15 +1,5 @@
 namespace CssLauncher.Core;
 
-public sealed record LauncherProfile(
-    string Id,
-    string Name,
-    string Description,
-    bool Novid = true,
-    bool Console = true,
-    bool Windowed = false,
-    bool Noborder = false,
-    string Extra = "");
-
 public sealed record ServerEntry(
     string Name,
     string Address,

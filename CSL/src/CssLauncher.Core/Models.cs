@@ -14,7 +14,6 @@ public record LaunchOptions(bool Novid = true, bool Console = true, bool Windowe
 public record LauncherSettings(string GamePath = "", LaunchOptions? LaunchOptions = null, bool DiagnosticMode = false)
 {
     public int SchemaVersion { get; init; } = 1;
-    public string ProfileId { get; init; } = "classic";
     public string Executable { get; init; } = "";
 
     public LaunchOptions EffectiveLaunchOptions => LaunchOptions ?? new();

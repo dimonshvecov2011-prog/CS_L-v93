@@ -7,14 +7,15 @@ public sealed class GameLauncher : IGameLauncher
 {
     private static readonly string[] AllowedExecutables = ["cstrike.exe", "hl2.exe"];
 
-    public async Task<int> LaunchAsync(string gameRoot, string profilePath, LaunchOptions options,
+    public async Task<int> LaunchAsync(string gameRoot, LaunchOptions options,
         Action<string>? log = null, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(options);
         if (string.IsNullOrWhiteSpace(gameRoot) || !Directory.Exists(gameRoot))
             throw new DirectoryNotFoundException("Папка игры не найдена.");
-        if (string.IsNullOrWhiteSpace(profilePath) || !Directory.Exists(profilePath))
-            throw new DirectoryNotFoundException("Папка профиля запуска не найдена.");
+        var officialGameInfo = Path.Combine(Path.GetFullPath(gameRoot), "cstrike", "gameinfo.txt");
+        if (!File.Exists(officialGameInfo))
+            throw new FileNotFoundException("Не найден официальный cstrike\\gameinfo.txt. Запуск отменён.", officialGameInfo);
         if (options.Width is <= 0 or > 16384) throw new ArgumentOutOfRangeException(nameof(options.Width));
         if (options.Height is <= 0 or > 16384) throw new ArgumentOutOfRangeException(nameof(options.Height));
 
@@ -50,8 +51,6 @@ public sealed class GameLauncher : IGameLauncher
 
         var psi = new ProcessStartInfo(exe) { WorkingDirectory = normalizedRoot, UseShellExecute = false };
         if (options.Steam) psi.ArgumentList.Add("-steam");
-        psi.ArgumentList.Add("-game");
-        psi.ArgumentList.Add(Path.GetFullPath(profilePath));
         if (options.Novid) psi.ArgumentList.Add("-novid");
         if (options.Console) psi.ArgumentList.Add("-console");
         if (options.Windowed) psi.ArgumentList.Add("-windowed");
