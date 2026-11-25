@@ -22,5 +22,6 @@
     <None Include="../../config/version-manifest.v93.json" Link="config/version-manifest.v93.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../../config/servers.example.json" Link="config/servers.example.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../../config/launcher-update.json" Link="config/launcher-update.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../hud/file-hud-v1/**/*" Link="hud/file-hud-v1/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

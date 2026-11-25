@@ -270,7 +270,7 @@
                             </Border>
                             <TextBlock Text="УСТАНОВКА ИГРЫ" FontSize="9" FontWeight="Bold"
                                        Foreground="{StaticResource MutedBrush}" Margin="2,17,0,7" />
-                            <TextBlock Text="Игра устанавливается официальным клиентом Steam. CS:L не копирует и не изменяет игровые файлы."
+                            <TextBlock Text="Игра устанавливается официальным клиентом Steam. CS:L управляет только своей папкой custom/csl_hud."
                                        FontSize="10" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" />
                         </StackPanel>
                     </DockPanel>
@@ -336,6 +336,27 @@
                                                        Foreground="{StaticResource MutedBrush}" FontSize="10" TextWrapping="Wrap" />
                                         </StackPanel>
                                     </Border>
+                                    <Border Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrushSoft}"
+                                            BorderThickness="1" CornerRadius="12" Padding="13" Margin="0,0,0,10">
+                                        <StackPanel>
+                                            <TextBlock Text="ФАЙЛОВЫЙ HUD v1 — ИССЛЕДОВАНИЕ" FontSize="9" FontWeight="Bold"
+                                                       Foreground="{StaticResource WarningBrush}" />
+                                            <TextBlock x:Name="HudModeLabel" Text="Режим исследования HUD выключен" FontSize="14"
+                                                       FontWeight="SemiBold" Margin="0,5,0,3" TextWrapping="Wrap" />
+                                            <TextBlock Text="Управляются только файлы cstrike/custom/csl_hud. DLL, VPK и gameinfo.txt не изменяются. Совместимость проверяется по ClientVersion из steam.inf."
+                                                       Foreground="{StaticResource MutedBrush}" FontSize="10" TextWrapping="Wrap" />
+                                            <TextBlock x:Name="HudStatusText" Text="HUD: игра не выбрана" Foreground="{StaticResource MutedBrush}"
+                                                       FontSize="10" TextWrapping="Wrap" Margin="0,7,0,0" />
+                                            <WrapPanel Margin="0,9,0,0">
+                                                <Button x:Name="HudInstallButton" Content="Установить" Click="InstallHud_Click" IsEnabled="False"
+                                                        Padding="10,7" FontSize="11" />
+                                                <Button x:Name="HudUpdateButton" Content="Обновить" Click="UpdateHud_Click" IsEnabled="False"
+                                                        Padding="10,7" FontSize="11" />
+                                                <Button x:Name="HudRemoveButton" Content="Удалить" Click="RemoveHud_Click" IsEnabled="False"
+                                                        Padding="10,7" FontSize="11" Background="#4A2C2C" />
+                                            </WrapPanel>
+                                        </StackPanel>
+                                    </Border>
                                     <Grid>
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*" />
@@ -350,7 +371,7 @@
                                                            Foreground="{StaticResource BlueBrush}" />
                                                 <TextBlock Text="Обычный запуск игры" FontSize="14"
                                                            FontWeight="SemiBold" Margin="0,5,0,3" TextWrapping="Wrap" />
-                                                <TextBlock Text="Флажки запуска находятся в нижней панели. CS:L не копирует и не изменяет файлы Steam."
+                                                <TextBlock Text="Флажки запуска находятся в нижней панели. CS:L управляет только своей папкой custom/csl_hud."
                                                            Foreground="{StaticResource MutedBrush}" FontSize="10"
                                                            TextWrapping="Wrap" />
                                             </StackPanel>
@@ -403,9 +424,11 @@
                                                     <TextBlock Text="{Binding DisplayName}" FontSize="10"
                                                                Foreground="{StaticResource MutedBrush}" Margin="0,3,0,0" />
                                                 </StackPanel>
+                                                <TextBlock Grid.Column="1" Text="{Binding VacLabel}" FontSize="10"
+                                                           Foreground="#F5BE6B" VerticalAlignment="Center" Margin="10,0,0,0" />
                                                 <TextBlock Grid.Column="1" Text="{Binding Address}" FontSize="10"
                                                            Foreground="{StaticResource AccentBrush}"
-                                                           VerticalAlignment="Center" Margin="10,0,0,0" />
+                                                           VerticalAlignment="Center" Margin="55,0,0,0" />
                                             </Grid>
                                         </DataTemplate>
                                     </ListView.ItemTemplate>
@@ -498,7 +521,7 @@
                             <WrapPanel>
                                 <CheckBox x:Name="DiagnosticBox" Content="Диагностический режим"
                                           Checked="DiagnosticChanged" Unchecked="DiagnosticChanged" />
-                                <CheckBox x:Name="HudBox" Content="CS:L HUD (только без VAC)"
+                                <CheckBox x:Name="HudBox" Content="Режим исследования HUD (без VAC)"
                                           Checked="HudChanged" Unchecked="HudChanged" />
                                 <CheckBox x:Name="SteamBox" Content="-steam" IsChecked="True" />
                                 <CheckBox x:Name="NovidBox" Content="-novid" IsChecked="True" />

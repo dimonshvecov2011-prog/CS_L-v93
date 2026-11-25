@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "csl-hud-file-v1",
+  "description": "Conservative CS:L HUD research resources; no DLL and no gameplay logic.",
+  "files": [
+    {
+      "path": "scripts/hudlayout.res",
+      "sha256": "9417475DB1E6B15E8A8BBCE4C216592378CCA29C60D70031B30F466B701DCB7E"
+    },
+    {
+      "path": "resource/csl_hud_colors.res",
+      "sha256": "0319B59F33E507E5A4D8360856F18A78E6BC6ECBA33315B72EC304745533448D"
+    },
+    {
+      "path": "resource/csl_hud_crosshair.res",
+      "sha256": "D2ABDCDA48D9475E1BB1E2133CFBEBA9C66DA20AF81A8987C209D0958A681364"
+    },
+    {
+      "path": "resource/csl_hud_fonts.res",
+      "sha256": "1DE08ED030CBFADC678145E5EE16F324B221FDBEA41000D996875EFECB556584"
+    }
+  ]
+}

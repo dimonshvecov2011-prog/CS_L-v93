@@ -8,9 +8,11 @@ public sealed record ServerEntry(
     int Players = 0,
     int MaxPlayers = 0,
     string Mode = "Classic",
-    string? Region = null)
+    string? Region = null,
+    bool Vac = false)
 {
-    public string DisplayName => $"{Name}  •  {Players}/{MaxPlayers}  •  {Map}";
+    public string VacLabel => Vac ? "VAC" : "без VAC";
+    public string DisplayName => $"{Name}  •  {Players}/{MaxPlayers}  •  {Map}  •  {VacLabel}";
 }
 
 public sealed record ServerListManifest(

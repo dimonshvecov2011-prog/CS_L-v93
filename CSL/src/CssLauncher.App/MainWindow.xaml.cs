@@ -22,6 +22,7 @@ public partial class MainWindow : Window
     private readonly bool _previousRunWasUnclean;
     private readonly CrashRecoveryMarker _recoveryMarker;
     private readonly ServerListService _servers = new();
+    private readonly HudFileService _hudFiles;
     private readonly LauncherUpdateService _updates = new();
     private readonly DiagnosticArchiveService _diagnostics = new();
     private readonly LaunchGate _launchGate = new();
@@ -41,6 +42,7 @@ public partial class MainWindow : Window
         _safeMode = safeMode;
         _previousRunWasUnclean = previousRunWasUnclean;
         _recoveryMarker = recoveryMarker;
+        _hudFiles = new HudFileService(Path.Combine(AppContext.BaseDirectory, "hud", "file-hud-v1"));
         InitializeComponent();
         Title = $"CS:L {CurrentVersion}";
         LauncherVersionText.Text = $"CS:L v{CurrentVersion}";
@@ -57,6 +59,9 @@ public partial class MainWindow : Window
                     PlayButton.IsEnabled = false;
                     InstallButton.IsEnabled = false;
                     ChooseFolderButton.IsEnabled = false;
+                    HudInstallButton.IsEnabled = false;
+                    HudUpdateButton.IsEnabled = false;
+                    HudRemoveButton.IsEnabled = false;
                     CheckUpdateButton.IsEnabled = false;
                     StatusText.Text = "Безопасный режим восстановления";
                     SideStatusText.Text = "Безопасный режим";
@@ -188,6 +193,7 @@ public partial class MainWindow : Window
         SteamBox.IsChecked = settings.EffectiveLaunchOptions.Steam;
         _hudEnabled = settings.HudEnabled;
         HudBox.IsChecked = _hudEnabled;
+        HudModeLabel.Text = _hudEnabled ? "Режим исследования HUD включён (без VAC)" : "Режим исследования HUD выключен";
         UpdateHudSafetyNotice();
 
         await RefreshRecoveryListsAsync();
@@ -357,6 +363,7 @@ public partial class MainWindow : Window
             StatusText.Text = "Папка игры не найдена";
             SideStatusText.Text = "Не подключено";
             SideVersionText.Text = "—";
+            RefreshHudStatus();
             UpdateExecutableOptions("");
             return false;
         }
@@ -374,6 +381,7 @@ public partial class MainWindow : Window
                 StatusText.Text = "Папка не содержит полной установки CS:S";
                 SideStatusText.Text = "Неполная установка";
                 SideVersionText.Text = "—";
+                RefreshHudStatus();
                 UpdateExecutableOptions("");
                 HintText.Text = _check.Message ?? "Нужны cstrike/gameinfo.txt и cstrike.exe или hl2.exe";
                 UpdatePlayState();
@@ -382,6 +390,7 @@ public partial class MainWindow : Window
 
             UpdateExecutableOptions(path);
             BuildText.Text = $"ClientVersion: {_check.ClientVersion ?? "—"}   •   Steam buildid: {_check.BuildId ?? "—"}";
+            RefreshHudStatus();
             StatusText.Text = _check.Status switch
             {
                 VersionStatus.Confirmed => HashMismatchPrompt.IsRequired(_check)
@@ -403,6 +412,7 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             _check = null;
+            RefreshHudStatus();
             BuildText.Text = "ClientVersion: —   •   Steam buildid: —";
             StatusText.Text = "Не удалось проверить игру";
             SideStatusText.Text = "Ошибка проверки";
@@ -554,6 +564,7 @@ public partial class MainWindow : Window
     private void HudChanged(object sender, RoutedEventArgs e)
     {
         _hudEnabled = HudBox.IsChecked == true;
+        HudModeLabel.Text = _hudEnabled ? "Режим исследования HUD включён (без VAC)" : "Режим исследования HUD выключен";
         UpdateHudSafetyNotice();
         UpdatePlayState();
     }
@@ -562,7 +573,70 @@ public partial class MainWindow : Window
     {
         HudSafetyNotice.Visibility = _hudEnabled ? Visibility.Visible : Visibility.Collapsed;
         if (_hudEnabled)
-            HintText.Text = "CS:L HUD включён: запуск только без VAC (-insecure). Подключение к VAC-серверам запрещено.";
+            HintText.Text = "Режим исследования HUD включён: запуск только без VAC (-insecure). Подключение к VAC-серверам запрещено.";
+    }
+
+    private void RefreshHudStatus()
+    {
+        if (string.IsNullOrWhiteSpace(_gamePath) || !Directory.Exists(_gamePath))
+        {
+            HudStatusText.Text = "HUD: игра не выбрана";
+            HudInstallButton.IsEnabled = HudUpdateButton.IsEnabled = HudRemoveButton.IsEnabled = false;
+            return;
+        }
+        var result = _hudFiles.Inspect(_gamePath);
+        HudStatusText.Text = $"HUD: {result.Message} Сборка: {result.ClientVersion ?? "—"}";
+        var supported = result.State is not HudInstallState.UnsupportedBuild and not HudInstallState.Error;
+        HudInstallButton.IsEnabled = supported && result.State != HudInstallState.Installed && !_safeMode;
+        HudUpdateButton.IsEnabled = supported && result.State != HudInstallState.NotInstalled && !_safeMode;
+        HudRemoveButton.IsEnabled = (result.State is HudInstallState.Installed or HudInstallState.Corrupt) && !_safeMode;
+        if (result.State == HudInstallState.UnsupportedBuild) _logger.Warning(result.Message);
+    }
+
+    private void InstallHud_Click(object sender, RoutedEventArgs e) => ManageHud();
+    private void UpdateHud_Click(object sender, RoutedEventArgs e) => ManageHud();
+
+    private void ManageHud()
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(_gamePath)) return;
+            _hudFiles.InstallOrUpdate(_gamePath);
+            HudBox.IsChecked = true;
+            _hudEnabled = true;
+            UpdateHudSafetyNotice();
+            RefreshHudStatus();
+            _logger.Info("Файловый HUD v1 установлен или обновлён.");
+            HintText.Text = "HUD-файлы установлены. Следующий запуск будет только с -insecure.";
+        }
+        catch (Exception ex)
+        {
+            _logger.Error("Не удалось установить файловый HUD.", ex);
+            WpfMessageBox.Show($"Установка HUD отменена; предыдущее состояние восстановлено.\n\n{ex.Message}",
+                "CS:L — файловый HUD", MessageBoxButton.OK, MessageBoxImage.Error);
+            RefreshHudStatus();
+        }
+    }
+
+    private void RemoveHud_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(_gamePath)) return;
+            if (WpfMessageBox.Show("Удалить только папку cstrike/custom/csl_hud? Другие файлы custom не затрагиваются.",
+                    "CS:L — удалить HUD", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
+            _hudFiles.Remove(_gamePath);
+            HudBox.IsChecked = false;
+            _hudEnabled = false;
+            UpdateHudSafetyNotice();
+            RefreshHudStatus();
+            HintText.Text = "Файловый HUD удалён; другие файлы игры и custom не изменены.";
+        }
+        catch (Exception ex)
+        {
+            _logger.Error("Не удалось удалить файловый HUD.", ex);
+            WpfMessageBox.Show(ex.Message, "CS:L — файловый HUD", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
     }
 
     private LaunchOptions BuildOptions() => new(
@@ -627,7 +701,10 @@ public partial class MainWindow : Window
                 : Path.Combine(_root, source);
             var list = await _servers.LoadAsync(uri);
             ServersList.ItemsSource = list.Servers;
-            ServerDetailText.Text = $"Обновлено: {list.UpdatedAt}; серверов: {list.Servers.Count}";
+            var vacCount = list.Servers.Count(server => server.Vac);
+            ServerDetailText.Text = _hudEnabled && vacCount > 0
+                ? $"Обновлено: {list.UpdatedAt}; серверов: {list.Servers.Count}. Внимание: {vacCount} VAC-сервер(ов) запрещены при режиме HUD."
+                : $"Обновлено: {list.UpdatedAt}; серверов: {list.Servers.Count}. VAC-пометка отображается у каждой записи.";
         }
         catch (Exception ex)
         {
