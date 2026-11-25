@@ -293,6 +293,50 @@ public class CoreTests
     }
 
     [Fact]
+    public async Task ProfileCatalogHandlesTypicalOfficialRelativeSearchPaths()
+    {
+        var app = TempDirectory("CssTypicalGameInfoApp");
+        var game = TempDirectory("CssTypicalGameInfoGame");
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(game, "cstrike", "bin"));
+            Directory.CreateDirectory(Path.Combine(game, "hl2"));
+            await File.WriteAllTextAsync(Path.Combine(game, "cstrike", "cstrike_pak_dir.vpk"), "vpk");
+            await File.WriteAllTextAsync(Path.Combine(game, "hl2", "hl2_misc_dir.vpk"), "vpk");
+            await File.WriteAllTextAsync(Path.Combine(game, "cstrike", "gameinfo.txt"), """
+                "GameInfo"
+                {
+                    game "Counter-Strike: Source"
+                    FileSystem
+                    {
+                        SteamAppId 240
+                        SearchPaths
+                        {
+                            game+mod+custom_mod   |gameinfo_path|custom/*
+                            game+mod              |gameinfo_path|.
+                            game                  |gameinfo_path|bin
+                            game+download         |gameinfo_path|download
+                            game                  cstrike/cstrike_pak.vpk
+                            game                  |all_source_engine_paths|hl2/hl2_misc.vpk
+                        }
+                    }
+                }
+                """);
+
+            var service = new ProfileCatalogService(app);
+            var profilePath = await service.PrepareFromGameInfoAsync(game, service.Get("classic"));
+            var generated = await File.ReadAllTextAsync(Path.Combine(profilePath, "gameinfo.txt"));
+            var normalizedGame = Path.GetFullPath(game).Replace('\\', '/');
+
+            Assert.Contains($"{normalizedGame}/cstrike/bin", generated);
+            Assert.Contains($"{normalizedGame}/cstrike/cstrike_pak.vpk", generated);
+            Assert.Contains($"{normalizedGame}/hl2/hl2_misc.vpk", generated);
+            Assert.Empty(service.ValidateProfile(profilePath, game));
+        }
+        finally { DeleteDirectory(app); DeleteDirectory(game); }
+    }
+
+    [Fact]
     public async Task ProfileGenerationKeepsPreviousValidVersionAndRollbackRestoresIt()
     {
         var app = TempDirectory("CssProfileRollbackApp");

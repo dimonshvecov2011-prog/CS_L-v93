@@ -257,10 +257,13 @@ public sealed class ProfileCatalogService
                 .Replace("|all_source_engine_paths|", Path.GetFullPath(gameRoot).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
                 .Replace("{GAME_ROOT}", Path.GetFullPath(gameRoot), StringComparison.OrdinalIgnoreCase)
                 .Replace('/', Path.DirectorySeparatorChar);
+            if (!Path.IsPathRooted(expanded))
+                expanded = Path.Combine(Path.GetFullPath(gameRoot), expanded);
             var wildcard = expanded.IndexOf('*');
             if (wildcard >= 0) expanded = expanded[..wildcard].TrimEnd(Path.DirectorySeparatorChar);
             var full = Path.GetFullPath(expanded);
-            if (entry.Contains("cstrike/download", StringComparison.OrdinalIgnoreCase) && !Directory.Exists(full)) continue;
+            var downloadPath = Path.Combine(Path.GetFullPath(gameRoot), "cstrike", "download");
+            if (full.Equals(downloadPath, StringComparison.OrdinalIgnoreCase) && !Directory.Exists(full)) continue;
             var profileEquivalent = TryMapToProfilePath(full, expectedProfilePath ?? profilePath);
             if (!SearchPathExists(full) && (profileEquivalent is null || !SearchPathExists(profileEquivalent)))
                 errors.Add($"Не найден SearchPath: {entry}");
@@ -317,7 +320,7 @@ public sealed class ProfileCatalogService
                 line.Contains("mod_write", StringComparison.OrdinalIgnoreCase)) continue;
             var sourcePathValue = match.Groups[1].Success ? match.Groups[1].Value : match.Groups[2].Value;
             var resolvedPath = sourcePathValue
-                .Replace("|gameinfo_path|", cstrikePath, StringComparison.OrdinalIgnoreCase)
+                .Replace("|gameinfo_path|", cstrikePath + "/", StringComparison.OrdinalIgnoreCase)
                 .Replace("|all_source_engine_paths|", gameRootPath + "/", StringComparison.OrdinalIgnoreCase);
             var rendered = line.Replace(sourcePathValue, resolvedPath, StringComparison.Ordinal);
             if (!match.Groups[1].Success && resolvedPath.Contains(' '))

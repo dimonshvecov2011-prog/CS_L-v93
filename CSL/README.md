@@ -1,4 +1,4 @@
-# CS:L 0.3.5 — стабильность и восстановление
+# CS:L 0.3.6-rc1 — стабильность и восстановление
 
 Windows-лаунчер для текущей Steam-сборки Counter-Strike: Source. Совместимость определяется по версии клиента из `cstrike/steam.inf`, а Steam `buildid` используется как дополнительная диагностическая информация. Файлы Valve в репозитории отсутствуют.
 
@@ -155,18 +155,18 @@ iscc .\installer\CSL-Setup.iss
 
 ## Автоматическая сборка через GitHub Actions
 
-Файл `.github/workflows/build-csl.yml` собирает проект на `windows-latest` без установки .NET или Inno Setup на компьютере разработчика. Workflow выполняет restore, build, тесты, self-contained publish и собирает `CSL-Setup-0.3.5.exe`; перед релизом версия тега сверяется с версиями приложения и установщика. Готовые portable-файлы и установщик доступны во вкладке **Actions → Artifacts**.
+Файл `.github/workflows/build-csl.yml` собирает проект на `windows-latest` без установки .NET или Inno Setup на компьютере разработчика. Workflow выполняет restore, build, тесты, self-contained publish и собирает `CSL-Setup-0.3.6-rc1.exe`; перед релизом версия тега сверяется с версиями приложения и установщика. Готовые portable-файлы и установщик доступны во вкладке **Actions → Artifacts**.
 
 Для релизной сборки создайте и отправьте тег:
 
 ```powershell
-git tag v0.3.5
-git push origin v0.3.5
+git tag v0.3.6-rc1
+git push origin v0.3.6-rc1
 ```
 
 Для тега `v*` workflow дополнительно создаёт GitHub Release и прикладывает установщик. Сам репозиторий не должен содержать файлы CS:S, Steam или Valve.
 
-## CS:L 0.3.5 — backup, rollback и безопасное восстановление
+## CS:L 0.3.6-rc1 — backup, rollback и безопасное восстановление
 
 - Перед каждой перезаписью `settings.json` сохраняются timestamped-копии; остаются последние пять валидных файлов в `%AppData%\CssLauncher\backups\settings`. Откройте вкладку **«Восстановление»**, выберите копию и подтвердите восстановление. При повреждённом или чрезмерно большом JSON CS:L предлагает последнюю рабочую копию; исходный файл сохраняется отдельно.
 - Профили создаются сначала в staging-каталоге под `%AppData%\CssLauncher\profiles`, `gameinfo.txt` и SearchPaths внутри `FileSystem` проверяются до установки, прежняя версия переносится в `%AppData%\CssLauncher\backups\profiles`. Уже валидный профиль повторно используется; при обновлении шаблона его `cfg`/`custom` и другие файлы сохраняются. Подтверждённый factory reset создаёт чистый профиль, оставляя прежний целиком в backup. Вкладка восстановления даёт откат только после проверки выбранной копии.
