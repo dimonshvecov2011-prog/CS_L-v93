@@ -1,12 +1,18 @@
 using System.IO.Compression;
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using CssLauncher.Core;
 
 namespace CssLauncher.Game;
 
 public sealed class ProfileCatalogService
 {
+    private const int MaxProfileBackups = 5;
+    private static readonly Regex SearchPathLine = new(@"^\s*[A-Za-z][A-Za-z0-9+_]*\s+(?:""([^""]+)""|([^\s]+))", RegexOptions.Compiled | RegexOptions.Multiline);
+    private static readonly Regex FileSystemBlock = new(@"(?im)^\s*""?FileSystem""?\s*\{", RegexOptions.Compiled);
+    private static readonly Regex SearchPathsBlock = new(@"(?im)^\s*""?SearchPaths""?\s*\{", RegexOptions.Compiled);
     public static IReadOnlyList<LauncherProfile> BuiltInProfiles { get; } = new[]
     {
         new LauncherProfile("classic", "Classic", "Оригинальный опыт CS:S без лишних изменений."),
@@ -24,8 +30,27 @@ public sealed class ProfileCatalogService
 
     public string GetPath(string id) => Path.Combine(_root, Get(id).Id);
 
-    public async Task<string> PrepareAsync(string gameRoot, LauncherProfile profile, string templatePath, CancellationToken ct = default)
+    public IReadOnlyList<ProfileBackupInfo> GetBackups(string id)
     {
+        EnsureNoReparsePoints(_root);
+        var directory = GetBackupDirectory(id);
+        EnsureNoReparsePoints(directory);
+        if (!Directory.Exists(directory)) return Array.Empty<ProfileBackupInfo>();
+        var paths = Directory.GetDirectories(directory);
+        foreach (var path in paths) EnsureNoReparsePointsRecursive(path);
+        return paths
+            .OrderByDescending(Directory.GetLastWriteTimeUtc)
+            .Select(path => new ProfileBackupInfo(path, Directory.GetLastWriteTimeUtc(path)))
+            .ToArray();
+    }
+
+    public Task<string> PrepareAsync(string gameRoot, LauncherProfile profile, string templatePath, CancellationToken ct = default) =>
+        PrepareCoreAsync(gameRoot, profile, templatePath, preserveExistingData: true, reuseIfCurrent: true, ct: ct);
+
+    private async Task<string> PrepareCoreAsync(string gameRoot, LauncherProfile profile, string templatePath,
+        bool preserveExistingData, bool reuseIfCurrent, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
         if (string.IsNullOrWhiteSpace(gameRoot) || !Directory.Exists(gameRoot))
             throw new DirectoryNotFoundException("Папка игры не найдена.");
         if (profile is null) throw new ArgumentNullException(nameof(profile));
@@ -33,15 +58,364 @@ public sealed class ProfileCatalogService
 
         var builtInProfile = Get(profile.Id);
         var path = GetPath(builtInProfile.Id);
-        Directory.CreateDirectory(Path.Combine(path, "custom"));
-        var normalizedRoot = Path.GetFullPath(gameRoot).Replace("\\", "/");
-        var gameInfo = (await File.ReadAllTextAsync(templatePath, ct)).Replace("{GAME_ROOT}", normalizedRoot, StringComparison.Ordinal);
-        await File.WriteAllTextAsync(Path.Combine(path, "gameinfo.txt"), gameInfo, ct);
-        await File.WriteAllTextAsync(Path.Combine(path, "profile.json"),
-            JsonSerializer.Serialize(builtInProfile, new JsonSerializerOptions { WriteIndented = true }), ct);
-        return path;
+        var parent = Path.GetDirectoryName(path)!;
+        EnsureNoReparsePoints(parent);
+        Directory.CreateDirectory(parent);
+        EnsureNoReparsePoints(parent);
+        EnsureNoReparsePoints(path);
+        EnsureNoReparsePoints(GetBackupDirectory(builtInProfile.Id));
+        var staging = path + ".staging-" + Guid.NewGuid().ToString("N");
+        string? backup = null;
+        try
+        {
+            var template = await File.ReadAllTextAsync(templatePath, ct);
+            if (!template.Contains("{GAME_ROOT}", StringComparison.Ordinal))
+                throw new InvalidDataException("Шаблон gameinfo не содержит обязательную подстановку {GAME_ROOT}.");
+            var normalizedRoot = Path.GetFullPath(gameRoot).Replace("\\", "/");
+            var gameInfo = template.Replace("{GAME_ROOT}", normalizedRoot, StringComparison.Ordinal);
+            if (gameInfo.Contains("{GAME_ROOT}", StringComparison.Ordinal))
+                throw new InvalidDataException("В gameinfo.txt осталась неподставленная переменная {GAME_ROOT}.");
+            var profileJson = JsonSerializer.Serialize(builtInProfile, new JsonSerializerOptions { WriteIndented = true });
+            if (reuseIfCurrent && Directory.Exists(path) && ValidateProfile(path, gameRoot).Count == 0 &&
+                File.Exists(Path.Combine(path, "profile.json")) &&
+                string.Equals(await File.ReadAllTextAsync(Path.Combine(path, "gameinfo.txt"), ct), gameInfo, StringComparison.Ordinal) &&
+                string.Equals(await File.ReadAllTextAsync(Path.Combine(path, "profile.json"), ct), profileJson, StringComparison.Ordinal))
+                return path;
+
+            Directory.CreateDirectory(Path.Combine(staging, "custom"));
+            if (preserveExistingData && Directory.Exists(path)) CopyPreservedProfileContents(path, staging, ct);
+            await WriteAtomicallyAsync(Path.Combine(staging, "gameinfo.txt"), gameInfo, ct);
+            await WriteAtomicallyAsync(Path.Combine(staging, "profile.json"), profileJson, ct);
+            var validation = ValidateProfile(staging, gameRoot);
+            if (validation.Count > 0)
+                throw new InvalidDataException("Сгенерированный профиль не прошёл проверку SearchPaths:\n" + string.Join("\n", validation));
+
+            if (Directory.Exists(path))
+            {
+                backup = GetNewBackupPath(builtInProfile.Id);
+                Directory.CreateDirectory(Path.GetDirectoryName(backup)!);
+                EnsureNoReparsePoints(Path.GetDirectoryName(backup)!);
+                await MoveDirectoryWithRetriesAsync(path, backup, ct);
+            }
+            try
+            {
+                await MoveDirectoryWithRetriesAsync(staging, path, ct);
+                var finalErrors = ValidateProfile(path, gameRoot);
+                if (finalErrors.Count > 0)
+                    throw new InvalidDataException("Профиль после установки не прошёл проверку:\n" + string.Join("\n", finalErrors));
+            }
+            catch
+            {
+                if (Directory.Exists(path)) Directory.Delete(path, recursive: true);
+                if (backup is not null && Directory.Exists(backup))
+                    await MoveDirectoryWithRetriesAsync(backup, path, CancellationToken.None);
+                throw;
+            }
+            PruneBackups(builtInProfile.Id);
+            return path;
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            throw new IOException("Нет доступа для создания или резервного копирования профиля CS:L. Проверьте права на %AppData%\\CssLauncher.", ex);
+        }
+        finally
+        {
+            if (Directory.Exists(staging)) Directory.Delete(staging, recursive: true);
+        }
+    }
+
+    public async Task<string> RollbackAsync(string id, string? backupPath = null, string? gameRoot = null, CancellationToken ct = default)
+    {
+        ct.ThrowIfCancellationRequested();
+        var profile = Get(id);
+        var backups = GetBackups(profile.Id);
+        var selected = backupPath is null
+            ? backups.FirstOrDefault()?.Path
+            : backups.FirstOrDefault(item => Path.GetFullPath(item.Path).Equals(Path.GetFullPath(backupPath),
+                OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))?.Path;
+        if (selected is null) throw new DirectoryNotFoundException("Резервная копия профиля не найдена.");
+        EnsureNoReparsePointsRecursive(selected);
+        var selectedErrors = ValidateProfile(selected, gameRoot ?? string.Empty);
+        if (selectedErrors.Count > 0)
+            throw new InvalidDataException("Выбранная резервная копия профиля не прошла проверку:\n" + string.Join("\n", selectedErrors));
+        var target = GetPath(profile.Id);
+        EnsureNoReparsePoints(target);
+        EnsureNoReparsePoints(GetBackupDirectory(profile.Id));
+        var currentBackup = Directory.Exists(target) ? GetNewBackupPath(profile.Id) : null;
+        if (currentBackup is not null)
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(currentBackup)!);
+            EnsureNoReparsePoints(Path.GetDirectoryName(currentBackup)!);
+            await MoveDirectoryWithRetriesAsync(target, currentBackup, ct);
+        }
+        try
+        {
+            await MoveDirectoryWithRetriesAsync(selected, target, ct);
+            var errors = ValidateProfile(target, gameRoot ?? string.Empty);
+            if (errors.Count > 0)
+                throw new InvalidDataException("Восстановленный профиль не прошёл проверку:\n" + string.Join("\n", errors));
+            PruneBackups(profile.Id);
+            return target;
+        }
+        catch (Exception updateError)
+        {
+            try
+            {
+                if (Directory.Exists(target) && !Directory.Exists(selected))
+                    await MoveDirectoryWithRetriesAsync(target, selected, CancellationToken.None);
+                if (!Directory.Exists(target) && currentBackup is not null && Directory.Exists(currentBackup))
+                    await MoveDirectoryWithRetriesAsync(currentBackup, target, CancellationToken.None);
+            }
+            catch (Exception restoreError)
+            {
+                throw new AggregateException("Проверка или откат резервной копии профиля завершились ошибкой; сохранённые каталоги не удаляйте.",
+                    updateError, restoreError);
+            }
+            throw;
+        }
+    }
+
+    public Task<string> ResetToFactoryAsync(string gameRoot, string id, string templatePath, CancellationToken ct = default) =>
+        PrepareCoreAsync(gameRoot, Get(id), templatePath, preserveExistingData: false, reuseIfCurrent: false, ct);
+
+    public async Task ResetAllToFactoryAsync(string? gameRoot, string templatePath, CancellationToken ct = default)
+    {
+        foreach (var profile in BuiltInProfiles)
+        {
+            ct.ThrowIfCancellationRequested();
+            var current = GetPath(profile.Id);
+            EnsureNoReparsePoints(_root);
+            EnsureNoReparsePoints(current);
+            EnsureNoReparsePoints(GetBackupDirectory(profile.Id));
+            if (!string.IsNullOrWhiteSpace(gameRoot) && Directory.Exists(gameRoot))
+            {
+                await ResetToFactoryAsync(gameRoot, profile.Id, templatePath, ct);
+                continue;
+            }
+            if (!Directory.Exists(current)) continue;
+            var backup = GetNewBackupPath(profile.Id);
+            Directory.CreateDirectory(Path.GetDirectoryName(backup)!);
+            EnsureNoReparsePoints(Path.GetDirectoryName(backup)!);
+            await MoveDirectoryWithRetriesAsync(current, backup, ct);
+            PruneBackups(profile.Id);
+        }
+    }
+
+    public IReadOnlyList<string> ValidateProfile(string profilePath, string gameRoot)
+    {
+        EnsureNoReparsePointsRecursive(profilePath);
+        var errors = new List<string>();
+        var gameInfoPath = Path.Combine(profilePath, "gameinfo.txt");
+        if (!File.Exists(gameInfoPath)) return new[] { "gameinfo.txt отсутствует." };
+        var text = File.ReadAllText(gameInfoPath);
+        var filesystemMatch = FileSystemBlock.Match(text);
+        if (!filesystemMatch.Success) return new[] { "В gameinfo.txt отсутствует блок FileSystem." };
+        var filesystemOpen = filesystemMatch.Index + filesystemMatch.Length - 1;
+        var filesystemBody = ExtractBalancedBlock(text, filesystemOpen);
+        if (filesystemBody is null) return new[] { "Блок FileSystem в gameinfo.txt не закрыт корректно." };
+        var searchPathsMatch = SearchPathsBlock.Match(filesystemBody);
+        if (!searchPathsMatch.Success) return new[] { "В блоке FileSystem отсутствует SearchPaths." };
+        var searchPathsOpen = searchPathsMatch.Index + searchPathsMatch.Length - 1;
+        var searchPathsBody = ExtractBalancedBlock(filesystemBody, searchPathsOpen);
+        if (searchPathsBody is null) return new[] { "Блок SearchPaths в gameinfo.txt не закрыт корректно." };
+        var searchPaths = SearchPathLine.Matches(searchPathsBody)
+            .Select(match => match.Groups[1].Success ? match.Groups[1].Value : match.Groups[2].Value).ToArray();
+        if (searchPaths.Length == 0) return new[] { "В gameinfo.txt не найден блок SearchPaths." };
+        foreach (var entry in searchPaths)
+        {
+            var profilePathPrefix = Path.GetFullPath(profilePath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
+            var expanded = entry.Replace("|gameinfo_path|", profilePathPrefix, StringComparison.OrdinalIgnoreCase)
+                .Replace("{GAME_ROOT}", Path.GetFullPath(gameRoot), StringComparison.OrdinalIgnoreCase)
+                .Replace('/', Path.DirectorySeparatorChar);
+            var wildcard = expanded.IndexOf('*');
+            if (wildcard >= 0) expanded = expanded[..wildcard].TrimEnd(Path.DirectorySeparatorChar);
+            var full = Path.GetFullPath(expanded);
+            if (!File.Exists(full) && !Directory.Exists(full)) errors.Add($"Не найден SearchPath: {entry}");
+        }
+        return errors;
+    }
+
+    private static string? ExtractBalancedBlock(string text, int openingBrace)
+    {
+        if (openingBrace < 0 || openingBrace >= text.Length || text[openingBrace] != '{') return null;
+        var depth = 0;
+        var quoted = false;
+        var escaped = false;
+        var lineComment = false;
+        for (var index = openingBrace; index < text.Length; index++)
+        {
+            var character = text[index];
+            if (lineComment)
+            {
+                if (character is '\r' or '\n') lineComment = false;
+                continue;
+            }
+            if (quoted)
+            {
+                if (escaped) { escaped = false; continue; }
+                if (character == '\\') { escaped = true; continue; }
+                if (character == '"') quoted = false;
+                continue;
+            }
+            if (character == '"') { quoted = true; continue; }
+            if (character == '/' && index + 1 < text.Length && text[index + 1] == '/')
+            {
+                lineComment = true;
+                index++;
+                continue;
+            }
+            if (character == '{') depth++;
+            else if (character == '}' && --depth == 0) return text[(openingBrace + 1)..index];
+        }
+        return null;
+    }
+
+    private static void CopyPreservedProfileContents(string source, string destination, CancellationToken ct)
+    {
+        EnsureNoReparsePointsRecursive(source);
+        var pending = new Stack<string>();
+        pending.Push(source);
+        while (pending.Count > 0)
+        {
+            ct.ThrowIfCancellationRequested();
+            var current = pending.Pop();
+            foreach (var entry in Directory.EnumerateFileSystemEntries(current))
+            {
+                ct.ThrowIfCancellationRequested();
+                var relative = Path.GetRelativePath(source, entry);
+                if (relative.Equals("gameinfo.txt", StringComparison.OrdinalIgnoreCase) ||
+                    relative.Equals("profile.json", StringComparison.OrdinalIgnoreCase)) continue;
+                var target = Path.Combine(destination, relative);
+                var attributes = File.GetAttributes(entry);
+                if ((attributes & FileAttributes.ReparsePoint) != 0)
+                    throw new InvalidDataException($"Ссылки внутри профиля запрещены: {entry}");
+                if ((attributes & FileAttributes.Directory) != 0)
+                {
+                    Directory.CreateDirectory(target);
+                    pending.Push(entry);
+                }
+                else
+                {
+                    Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+                    File.Copy(entry, target, overwrite: false);
+                }
+            }
+        }
+    }
+
+    private static async Task MoveDirectoryWithRetriesAsync(string source, string destination, CancellationToken ct)
+    {
+        var delays = new[] { 50, 150, 350 };
+        for (var attempt = 0; ; attempt++)
+        {
+            ct.ThrowIfCancellationRequested();
+            try
+            {
+                Directory.Move(source, destination);
+                return;
+            }
+            catch (IOException) when (attempt < delays.Length)
+            {
+                await Task.Delay(delays[attempt], ct);
+            }
+            catch (UnauthorizedAccessException) when (attempt < delays.Length)
+            {
+                await Task.Delay(delays[attempt], ct);
+            }
+        }
+    }
+
+    private static async Task MoveFileWithRetriesAsync(string source, string destination, CancellationToken ct)
+    {
+        var delays = new[] { 40, 120, 300 };
+        for (var attempt = 0; ; attempt++)
+        {
+            ct.ThrowIfCancellationRequested();
+            try
+            {
+                File.Move(source, destination, overwrite: true);
+                return;
+            }
+            catch (IOException) when (attempt < delays.Length)
+            {
+                await Task.Delay(delays[attempt], ct);
+            }
+            catch (UnauthorizedAccessException) when (attempt < delays.Length)
+            {
+                await Task.Delay(delays[attempt], ct);
+            }
+        }
+    }
+
+    private string GetBackupDirectory(string id) => Path.Combine(_root, "..", "backups", "profiles", Get(id).Id);
+
+    private static void EnsureNoReparsePoints(string path)
+    {
+        var full = Path.GetFullPath(path);
+        var current = Path.GetPathRoot(full)!;
+        foreach (var component in full[current.Length..].Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar,
+                     StringSplitOptions.RemoveEmptyEntries))
+        {
+            current = Path.Combine(current, component);
+            if ((Directory.Exists(current) || File.Exists(current)) &&
+                (File.GetAttributes(current) & FileAttributes.ReparsePoint) != 0)
+                throw new InvalidDataException($"Ссылки файловой системы в каталоге профилей запрещены: {current}");
+        }
+    }
+
+    private static void EnsureNoReparsePointsRecursive(string path)
+    {
+        EnsureNoReparsePoints(path);
+        if (!Directory.Exists(path)) return;
+        foreach (var entry in Directory.EnumerateFileSystemEntries(path))
+        {
+            var attributes = File.GetAttributes(entry);
+            if ((attributes & FileAttributes.ReparsePoint) != 0)
+                throw new InvalidDataException($"Ссылки внутри каталогов профилей запрещены: {entry}");
+            if ((attributes & FileAttributes.Directory) != 0) EnsureNoReparsePointsRecursive(entry);
+        }
+    }
+
+    private string GetNewBackupPath(string id)
+    {
+        var directory = GetBackupDirectory(id);
+        return Path.Combine(directory, DateTime.UtcNow.ToString("yyyyMMdd-HHmmssfff") + "-" + Guid.NewGuid().ToString("N"));
+    }
+
+    private void PruneBackups(string id)
+    {
+        var backups = GetBackups(id);
+        foreach (var stale in backups.Skip(MaxProfileBackups))
+        {
+            try { Directory.Delete(stale.Path, recursive: true); }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+        }
+    }
+
+    private static async Task WriteAtomicallyAsync(string path, string contents, CancellationToken ct)
+    {
+        var temporary = path + ".tmp-" + Guid.NewGuid().ToString("N");
+        try
+        {
+            await using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None, 4096, useAsync: true))
+            await using (var writer = new StreamWriter(stream, new UTF8Encoding(false), leaveOpen: true))
+            {
+                await writer.WriteAsync(contents.AsMemory(), ct);
+                await writer.FlushAsync(ct);
+                await stream.FlushAsync(ct);
+                stream.Flush(flushToDisk: true);
+            }
+            await MoveFileWithRetriesAsync(temporary, path, ct);
+        }
+        finally
+        {
+            if (File.Exists(temporary)) File.Delete(temporary);
+        }
     }
 }
+
+public sealed record ProfileBackupInfo(string Path, DateTime CreatedUtc);
 
 public sealed class ServerListService
 {
@@ -149,6 +523,8 @@ public sealed class LauncherUpdateService
             if (manifest is null) return new(false, currentVersion, null, "Манифест обновления пуст.");
             if (manifest.SchemaVersion != 1)
                 return new(false, currentVersion, null, $"Неподдерживаемая схема манифеста обновлений: {manifest.SchemaVersion}.");
+            if (string.IsNullOrWhiteSpace(manifest.DownloadUrl) && string.IsNullOrWhiteSpace(manifest.Sha256) && manifest.Size == 0)
+                return new(false, currentVersion, manifest, "Канал обновлений CS:L отключён; автоматическая установка не выполняется.");
             if (!Version.TryParse(manifest.Version, out var remote) || !Version.TryParse(currentVersion, out var local))
                 return new(false, currentVersion, null, "Версия в манифесте или установленной сборке некорректна.");
             if (remote <= local) return new(false, currentVersion, manifest, "Установлена последняя версия.");
@@ -261,6 +637,146 @@ public sealed class LauncherUpdateService
     private static bool IsValidSha256(string? hash) => hash is { Length: 64 } && hash.All(Uri.IsHexDigit);
 }
 
+public sealed record LauncherUpdateTransactionResult(string InstallDirectory, string? BackupDirectory, bool LaunchConfirmed);
+
+/// <summary>
+/// Isolated transactional deployment engine for a launcher package. The live update feed remains disabled;
+/// real activation must be hosted by an external bootstrapper so the running executable is never replaced in place.
+/// </summary>
+public sealed class LauncherUpdateTransactionService
+{
+    private readonly TimeSpan _confirmationTimeout;
+
+    public LauncherUpdateTransactionService(TimeSpan? confirmationTimeout = null) =>
+        _confirmationTimeout = confirmationTimeout ?? TimeSpan.FromSeconds(90);
+
+    public async Task<LauncherUpdateTransactionResult> ApplyAsync(
+        string packagePath,
+        string installDirectory,
+        LauncherUpdateManifest manifest,
+        Func<string, CancellationToken, Task<bool>> confirmLaunchAsync,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(manifest);
+        ArgumentNullException.ThrowIfNull(confirmLaunchAsync);
+        if (!File.Exists(packagePath)) throw new FileNotFoundException("Пакет обновления не найден.", packagePath);
+        if (manifest.SchemaVersion != 1 || !Version.TryParse(manifest.Version, out _) || manifest.Size <= 0 ||
+            manifest.Size > LauncherUpdateService.MaxDownloadBytes || manifest.Sha256 is not { Length: 64 } ||
+            !manifest.Sha256.All(Uri.IsHexDigit))
+            throw new InvalidDataException("Манифест транзакции обновления некорректен.");
+
+        await using var packageStream = new FileStream(packagePath, FileMode.Open, FileAccess.Read, FileShare.Read,
+            81920, useAsync: true);
+        if (packageStream.Length != manifest.Size) throw new InvalidDataException("Размер пакета не совпадает с манифестом.");
+        var actualHash = Convert.ToHexString(await SHA256.HashDataAsync(packageStream, ct));
+        if (!actualHash.Equals(manifest.Sha256, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException("SHA-256 пакета не совпадает с манифестом.");
+        packageStream.Position = 0;
+
+        var target = Path.GetFullPath(installDirectory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var parent = Path.GetDirectoryName(target) ?? throw new InvalidDataException("Каталог установки не имеет родительской папки.");
+        Directory.CreateDirectory(parent);
+        var id = Guid.NewGuid().ToString("N");
+        var staging = Path.Combine(parent, $".{Path.GetFileName(target)}.staging-{id}");
+        var backup = Path.Combine(parent, $"{Path.GetFileName(target)}.backup-{manifest.Version}-{id}");
+        var hadPrevious = Directory.Exists(target);
+        var previousMoved = false;
+        var newInstalled = false;
+
+        try
+        {
+            await ExtractVerifiedPackageAsync(packageStream, staging, ct);
+            if (!File.Exists(Path.Combine(staging, "CSL.exe")))
+                throw new InvalidDataException("Пакет не содержит корневой файл CSL.exe.");
+            ct.ThrowIfCancellationRequested();
+
+            if (hadPrevious)
+            {
+                Directory.Move(target, backup);
+                previousMoved = true;
+            }
+            Directory.Move(staging, target);
+            newInstalled = true;
+
+            using var confirmationCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            confirmationCts.CancelAfter(_confirmationTimeout);
+            bool confirmed;
+            try
+            {
+                confirmed = await confirmLaunchAsync(target, confirmationCts.Token)
+                    .WaitAsync(_confirmationTimeout, ct);
+            }
+            catch (TimeoutException ex)
+            {
+                throw new TimeoutException($"Новая версия не подтвердила успешный запуск за {_confirmationTimeout.TotalSeconds:0} секунд.", ex);
+            }
+            catch (OperationCanceledException ex) when (!ct.IsCancellationRequested && confirmationCts.IsCancellationRequested)
+            {
+                throw new TimeoutException($"Новая версия не подтвердила успешный запуск за {_confirmationTimeout.TotalSeconds:0} секунд.", ex);
+            }
+            if (!confirmed) throw new InvalidOperationException("Новая версия не подтвердила успешный запуск.");
+            return new LauncherUpdateTransactionResult(target, previousMoved ? backup : null, LaunchConfirmed: true);
+        }
+        catch (Exception updateError)
+        {
+            try
+            {
+                if (newInstalled && Directory.Exists(target))
+                    Directory.Move(target, target + ".failed-" + id);
+                if (previousMoved && Directory.Exists(backup)) Directory.Move(backup, target);
+            }
+            catch (Exception rollbackError)
+            {
+                throw new AggregateException("Обновление не подтвердило запуск, и автоматический откат также завершился ошибкой. Не удаляйте папки .backup-* и .failed-*.",
+                    updateError, rollbackError);
+            }
+            throw;
+        }
+        finally
+        {
+            if (Directory.Exists(staging)) Directory.Delete(staging, recursive: true);
+        }
+    }
+
+    private static async Task ExtractVerifiedPackageAsync(Stream packageStream, string staging, CancellationToken ct)
+    {
+        const int maxEntries = 20000;
+        const long maxExpandedBytes = 1024L * 1024 * 1024;
+        Directory.CreateDirectory(staging);
+        using var archive = new ZipArchive(packageStream, ZipArchiveMode.Read, leaveOpen: true);
+        if (archive.Entries.Count is 0 or > maxEntries) throw new InvalidDataException("Число файлов в пакете обновления недопустимо.");
+        long total = 0;
+        var root = Path.GetFullPath(staging).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        foreach (var entry in archive.Entries)
+        {
+            ct.ThrowIfCancellationRequested();
+            var name = entry.FullName.Replace('\\', '/');
+            if (string.IsNullOrWhiteSpace(name) || name.StartsWith('/') || Path.IsPathRooted(name) ||
+                name.Split('/').Any(part => part is ".." or ".") || name.Contains(':'))
+                throw new InvalidDataException($"В пакете обнаружен небезопасный путь: {entry.FullName}");
+            var unixMode = (entry.ExternalAttributes >> 16) & 0xF000;
+            if (unixMode == 0xA000 ||
+                (entry.ExternalAttributes & (int)FileAttributes.ReparsePoint) != 0)
+                throw new InvalidDataException("Ссылки на файлы в пакете обновления запрещены.");
+            total = checked(total + entry.Length);
+            if (total > maxExpandedBytes) throw new InvalidDataException("Распакованный пакет превышает 1 ГБ.");
+            var destination = Path.GetFullPath(Path.Combine(staging, name.Replace('/', Path.DirectorySeparatorChar)));
+            if (!destination.StartsWith(root, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+                throw new InvalidDataException("Путь распаковки вышел за staging-каталог.");
+            if (name.EndsWith('/'))
+            {
+                Directory.CreateDirectory(destination);
+                continue;
+            }
+            Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+            await using var source = entry.Open();
+            await using var output = new FileStream(destination, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920, useAsync: true);
+            await source.CopyToAsync(output, ct);
+            await output.FlushAsync(ct);
+        }
+    }
+}
+
 public sealed class DiagnosticArchiveService
 {
     private readonly string _dataRoot;
@@ -282,6 +798,7 @@ public sealed class DiagnosticArchiveService
         Directory.CreateDirectory(backups);
         var archiveId = Guid.NewGuid().ToString("N")[..8];
         var archive = Path.Combine(backups, $"csl-diagnostic-{DateTime.Now:yyyyMMdd-HHmmss}-{archiveId}.zip");
+        var temporaryArchive = archive + ".tmp";
         var files = new List<string>();
         Add(files, Path.Combine(_dataRoot, "settings.json"));
         Add(files, Path.Combine(_dataRoot, "logs"), recursive: true);
@@ -293,21 +810,69 @@ public sealed class DiagnosticArchiveService
         }
 
         var uniqueFiles = files.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-        using (var zip = ZipFile.Open(archive, ZipArchiveMode.Create))
-        {
-            foreach (var file in uniqueFiles)
+        var inventoryFiles = new List<string>();
+        foreach (var inventoryRoot in new[] { Path.Combine(backups, "settings"), Path.Combine(backups, "profiles") })
+            inventoryFiles.AddRange(EnumerateSafeFiles(inventoryRoot));
+        var inventory = inventoryFiles
+            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+            .Select(path =>
             {
-                ct.ThrowIfCancellationRequested();
-                zip.CreateEntryFromFile(file, GetEntryName(file, gameRoot));
+                var info = new FileInfo(path);
+                return $"{Path.GetRelativePath(backups, path)}\t{info.Length} bytes\t{info.LastWriteTimeUtc:O}";
+            })
+            .ToArray();
+        try
+        {
+            using (var zip = ZipFile.Open(temporaryArchive, ZipArchiveMode.Create))
+            {
+                foreach (var file in uniqueFiles)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    zip.CreateEntryFromFile(file, GetEntryName(file, gameRoot));
+                }
+                var inventoryEntry = zip.CreateEntry("backup-inventory.txt");
+                using var inventoryStream = inventoryEntry.Open();
+                using var writer = new StreamWriter(inventoryStream, new UTF8Encoding(false));
+                writer.WriteLine("Backup inventory only; backup contents are not included.");
+                foreach (var line in inventory) writer.WriteLine(line);
             }
+            File.Move(temporaryArchive, archive, overwrite: false);
         }
-        return new DiagnosticArchiveResult(archive, uniqueFiles.Count, new FileInfo(archive).Length);
+        finally
+        {
+            if (File.Exists(temporaryArchive)) File.Delete(temporaryArchive);
+        }
+        return new DiagnosticArchiveResult(archive, uniqueFiles.Count + 1, new FileInfo(archive).Length);
     }
 
     private static void Add(List<string> files, string path, bool recursive = false)
     {
-        if (File.Exists(path)) files.Add(path);
-        else if (recursive && Directory.Exists(path)) files.AddRange(Directory.GetFiles(path, "*", SearchOption.AllDirectories));
+        if (File.Exists(path))
+        {
+            if ((File.GetAttributes(path) & FileAttributes.ReparsePoint) == 0) files.Add(path);
+        }
+        else if (recursive)
+        {
+            files.AddRange(EnumerateSafeFiles(path));
+        }
+    }
+
+    private static IEnumerable<string> EnumerateSafeFiles(string root)
+    {
+        if (!Directory.Exists(root) || (File.GetAttributes(root) & FileAttributes.ReparsePoint) != 0)
+            yield break;
+        var pending = new Stack<string>();
+        pending.Push(root);
+        while (pending.Count > 0)
+        {
+            foreach (var entry in Directory.EnumerateFileSystemEntries(pending.Pop()))
+            {
+                var attributes = File.GetAttributes(entry);
+                if ((attributes & FileAttributes.ReparsePoint) != 0) continue;
+                if ((attributes & FileAttributes.Directory) != 0) pending.Push(entry);
+                else yield return entry;
+            }
+        }
     }
 
     private string GetEntryName(string file, string? gameRoot)
